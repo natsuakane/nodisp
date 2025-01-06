@@ -5,12 +5,15 @@ use bevy::{
     window::PrimaryWindow,
 };
 
+mod block;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins) // Bevyのデフォルトプラグインを追加
         .add_systems(Startup, setup) // 起動時に実行するシステムを登録
         .add_systems(Startup, spawn_grid) // グリッドを追加
         .add_systems(Update, move_camera) // マウス操作を登録
+        .add_systems(Update, show_menu) // ブロック配置
         .run();
 }
 
@@ -47,7 +50,7 @@ fn spawn_grid(mut commands: Commands) {
                 custom_size: Some(Vec2::new(line_thickness, grid_size)),
                 ..Default::default()
             },
-            Transform::from_xyz(x_position, 0.0, 0.0),
+            Transform::from_xyz(x_position, 0.0, -1.0),
         ));
     }
 
@@ -60,36 +63,33 @@ fn spawn_grid(mut commands: Commands) {
                 custom_size: Some(Vec2::new(grid_size, line_thickness)),
                 ..Default::default()
             },
-            Transform::from_xyz(0.0, y_position, 0.0),
+            Transform::from_xyz(0.0, y_position, -1.0),
         ));
     }
 }
 
-/*
 fn show_menu(
     mut commands: Commands,
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
     buttons: Res<ButtonInput<MouseButton>>,
+    asset_server: Res<AssetServer>,
 ) {
     if buttons.pressed(MouseButton::Right) {
         if let Some(screen_pos) = window_query.single().cursor_position() {
             let (camera, camera_transform) = camera_query.single();
 
             if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) {
-                commands.spawn((
-                    Sprite {
-                        color: Color::srgb(0.5, 0.5, 1.0),
-                        custom_size: Some(Vec2::new(100.0, 100.0)),
-                        ..Default::default()
-                    },
-                    Transform::from_xyz(world_pos.x, world_pos.y, 0.0), // 位置を指定
-                ));
+                let newblock = block::Block {
+                    text: String::from("let aaa = bbb"),
+                    position: Vec2::new(world_pos.x, world_pos.y),
+                    block_type: block::BlockType::Variable,
+                };
+                block::spawn_block(&mut commands, newblock, asset_server);
             }
         }
     }
 }
-*/
 
 fn move_camera(
     mut mouse_motion: EventReader<MouseMotion>,
