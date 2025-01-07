@@ -8,7 +8,6 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 
 mod block;
-mod blocklist;
 
 fn main() {
     App::new()
