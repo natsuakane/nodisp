@@ -125,14 +125,26 @@ pub fn drag_system(
                 }
             }
             // マウスの左ボタンが離されたとき
-            else if mouse_button.just_released(MouseButton::Left) {
+            else if mouse_button.just_released(MouseButton::Left)
+                && keyboard.pressed(KeyCode::ShiftLeft)
+                && drag_state.dragged_entity != None
+            {
+                // エンティティを削除
+                if cursor_position.x >= window.size().x as f32 * 0.8 {
+                    commands
+                        .entity(drag_state.dragged_entity.unwrap())
+                        .despawn_recursive();
+                }
+
                 // ドラッグ終了
                 drag_state.dragged_entity = None;
                 drag_state.drag_start = None;
                 drag_state.is_dragging = false;
             }
             // ドラッグ中
-            else if mouse_button.pressed(MouseButton::Left) {
+            else if mouse_button.pressed(MouseButton::Left)
+                && keyboard.pressed(KeyCode::ShiftLeft)
+            {
                 if let Some(entity) = drag_state.dragged_entity {
                     if let Ok((_, mut transform)) = sprites.get_mut(entity) {
                         // エンティティの位置を更新

@@ -2,6 +2,7 @@ use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
     scene::ron::value::Float,
+    ui::widget::NodeImageMode,
     window::PrimaryWindow,
 };
 use rand::distributions::Alphanumeric;
@@ -15,6 +16,7 @@ fn main() {
         .add_plugins(DefaultPlugins) // Bevyのデフォルトプラグインを追加
         .add_systems(Startup, setup) // 起動時に実行するシステムを登録
         .add_systems(Startup, spawn_grid) // グリッドを追加
+        .add_systems(Startup, spawn_trash_area) //ゴミ箱エリアを追加
         .add_systems(Update, move_camera) // マウス操作を登録
         .add_systems(Update, show_menu) // ブロック配置
         .insert_resource(block::DragState::default()) // リソース追加
@@ -71,6 +73,37 @@ fn spawn_grid(mut commands: Commands) {
             Transform::from_xyz(0.0, y_position, -1.0),
         ));
     }
+}
+
+fn spawn_trash_area(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let trash_image = commands
+        .spawn((
+            ImageNode {
+                image: asset_server.load("images/gomibako.png").clone(),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            Node {
+                width: Val::Px(100.0),
+                height: Val::Px(100.0),
+                ..default()
+            },
+        ))
+        .id();
+
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(20.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                right: Val::Px(0.0),
+                top: Val::Px(0.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.3)),
+        ))
+        .add_child(trash_image);
 }
 
 fn show_menu(
