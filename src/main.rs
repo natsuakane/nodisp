@@ -4,6 +4,9 @@ use bevy::{
     scene::ron::value::Float,
     window::PrimaryWindow,
 };
+use rand::distributions::Alphanumeric;
+use rand::prelude::*;
+use rand::Rng;
 
 mod block;
 
@@ -14,6 +17,8 @@ fn main() {
         .add_systems(Startup, spawn_grid) // グリッドを追加
         .add_systems(Update, move_camera) // マウス操作を登録
         .add_systems(Update, show_menu) // ブロック配置
+        .insert_resource(block::DragState::default()) // リソース追加
+        .add_systems(Update, block::drag_system) // ドラッグできるようにする
         .run();
 }
 
@@ -73,17 +78,20 @@ fn show_menu(
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
     buttons: Res<ButtonInput<MouseButton>>,
+    drag_state: Res<block::DragState>,
     asset_server: Res<AssetServer>,
 ) {
-    if buttons.pressed(MouseButton::Right) {
+    let mut rng = rand::thread_rng();
+
+    if buttons.just_pressed(MouseButton::Right) && !drag_state.is_dragging {
         if let Some(screen_pos) = window_query.single().cursor_position() {
             let (camera, camera_transform) = camera_query.single();
 
             if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) {
                 let newblock = block::Block {
-                    text: String::from("let aaa = bbb"),
+                    text: (0..7).map(|_| rng.sample(Alphanumeric) as char).collect(),
                     position: Vec2::new(world_pos.x, world_pos.y),
-                    block_type: block::BlockType::Variable,
+                    block_type: block::BlockType::Expression,
                 };
                 block::spawn_block(&mut commands, newblock, asset_server);
             }
@@ -95,6 +103,7 @@ fn move_camera(
     mut mouse_motion: EventReader<MouseMotion>,
     mut mouse_wheel: EventReader<MouseWheel>,
     buttons: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&mut Transform, &mut OrthographicProjection), With<Camera2d>>,
 ) {
     let (mut transform, mut projection) = match query.get_single_mut() {
@@ -106,7 +115,7 @@ fn move_camera(
     let movement_speed = projection.scale;
 
     // マウスドラッグでカメラを移動
-    if buttons.pressed(MouseButton::Left) {
+    if buttons.pressed(MouseButton::Left) && !keyboard.pressed(KeyCode::ShiftLeft) {
         for event in mouse_motion.read() {
             transform.translation.x -= event.delta.x * movement_speed;
             transform.translation.y += event.delta.y * movement_speed;

@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::text::*;
+use bevy::window::PrimaryWindow;
 
 pub enum BlockType {
     Statement,
@@ -12,6 +13,18 @@ pub struct Block {
     pub text: String,
     pub position: Vec2,
     pub block_type: BlockType,
+}
+
+// ドラッグ可能なことを示すマーカーコンポーネント
+#[derive(Component)]
+pub struct Draggable;
+
+// ドラッグ状態を管理するリソース
+#[derive(Resource, Default)]
+pub struct DragState {
+    dragged_entity: Option<Entity>,
+    drag_start: Option<Vec2>,
+    pub is_dragging: bool,
 }
 
 pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: Res<AssetServer>) {
@@ -74,8 +87,60 @@ pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: Res<Asse
                 ..Default::default()
             },
             Transform::from_xyz(block.position.x, block.position.y, 0.0),
+            Draggable,
         ))
         .add_child(text_entity)
         .add_child(typetext_entity)
         .add_child(shadow_entity);
+}
+
+pub fn drag_system(
+    mut commands: Commands,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    mut drag_state: ResMut<DragState>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    mut sprites: Query<(Entity, &mut Transform), With<Draggable>>,
+) {
+    let window = window_query.single();
+    let (camera, camera_transform) = camera_query.single();
+
+    if let Some(cursor_position) = window.cursor_position() {
+        // カーソル位置をワールド座標に変換
+        if let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) {
+            // マウスの左ボタンが押されたとき
+            if mouse_button.just_pressed(MouseButton::Left) && keyboard.pressed(KeyCode::ShiftLeft)
+            {
+                // ドラッグ開始：カーソルの位置にあるエンティティを探す
+                for (entity, transform) in sprites.iter() {
+                    let sprite_pos = transform.translation.truncate();
+                    if world_position.distance(sprite_pos) < 25.0 {
+                        // 判定範囲
+                        drag_state.dragged_entity = Some(entity);
+                        drag_state.drag_start = Some(world_position);
+                        drag_state.is_dragging = true;
+                        break;
+                    }
+                }
+            }
+            // マウスの左ボタンが離されたとき
+            else if mouse_button.just_released(MouseButton::Left) {
+                // ドラッグ終了
+                drag_state.dragged_entity = None;
+                drag_state.drag_start = None;
+                drag_state.is_dragging = false;
+            }
+            // ドラッグ中
+            else if mouse_button.pressed(MouseButton::Left) {
+                if let Some(entity) = drag_state.dragged_entity {
+                    if let Ok((_, mut transform)) = sprites.get_mut(entity) {
+                        // エンティティの位置を更新
+                        transform.translation.x = world_position.x;
+                        transform.translation.y = world_position.y;
+                    }
+                }
+            }
+        }
+    }
 }
