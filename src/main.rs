@@ -4,39 +4,55 @@ use bevy::{
     ui::widget::NodeImageMode,
     window::PrimaryWindow,
 };
-use rand::distributions::Alphanumeric;
-use rand::Rng;
+use bevy_simple_text_input::{TextInput, TextInputPlugin};
 
 mod block;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins) // Bevyのデフォルトプラグインを追加
+        .add_plugins(TextInputPlugin) // テキストプラグインを追加
         .add_systems(Startup, setup) // 起動時に実行するシステムを登録
         .add_systems(Startup, spawn_grid) // グリッドを追加
         .add_systems(Startup, spawn_trash_area) //ゴミ箱エリアを追加
         .add_systems(Update, move_camera) // マウス操作を登録
         .add_systems(Update, show_menu) // ブロック配置
         .insert_resource(block::DragState::default()) // リソース追加
+        .insert_resource(block::BlockList::default()) // ブロックのリストを追加
         .add_systems(Update, block::drag_system) // ドラッグできるようにする
         .run();
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, mut block_list: ResMut<block::BlockList>) {
     // 2Dカメラを追加（四角形を描画するために必要）
     commands.spawn(Camera2d::default());
 
-    // 四角形を追加
-    for i in 1..10 {
-        commands.spawn((
-            Sprite {
-                color: Color::srgb(0.5, 0.5, 1.0),
-                custom_size: Some(Vec2::new(100.0, 100.0)),
-                ..Default::default()
-            },
-            Transform::from_xyz(200.0 * (i % 1000) as f32, 200.0 * (i / 5) as f32, 0.0), // 位置を指定
-        ));
-    }
+    block_list.items = vec![
+        block::BlockData {
+            text: String::from("+"),
+            block_type: block::BlockType::Expression,
+        },
+        block::BlockData {
+            text: String::from("-"),
+            block_type: block::BlockType::Expression,
+        },
+        block::BlockData {
+            text: String::from("*"),
+            block_type: block::BlockType::Expression,
+        },
+        block::BlockData {
+            text: String::from("/"),
+            block_type: block::BlockType::Expression,
+        },
+        block::BlockData {
+            text: String::from("%"),
+            block_type: block::BlockType::Expression,
+        },
+        block::BlockData {
+            text: String::from("print"),
+            block_type: block::BlockType::Function,
+        },
+    ];
 }
 
 fn spawn_grid(mut commands: Commands) {
@@ -104,32 +120,6 @@ fn spawn_trash_area(mut commands: Commands, asset_server: Res<AssetServer>) {
         .add_child(trash_image);
 }
 
-fn show_menu(
-    mut commands: Commands,
-    window_query: Query<&Window, With<PrimaryWindow>>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
-    buttons: Res<ButtonInput<MouseButton>>,
-    drag_state: Res<block::DragState>,
-    asset_server: Res<AssetServer>,
-) {
-    let mut rng = rand::thread_rng();
-
-    if buttons.just_pressed(MouseButton::Right) && !drag_state.is_dragging {
-        if let Some(screen_pos) = window_query.single().cursor_position() {
-            let (camera, camera_transform) = camera_query.single();
-
-            if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) {
-                let newblock = block::Block {
-                    text: (0..7).map(|_| rng.sample(Alphanumeric) as char).collect(),
-                    position: Vec2::new(world_pos.x, world_pos.y),
-                    block_type: block::BlockType::Expression,
-                };
-                block::spawn_block(&mut commands, newblock, asset_server);
-            }
-        }
-    }
-}
-
 fn move_camera(
     mut mouse_motion: EventReader<MouseMotion>,
     mut mouse_wheel: EventReader<MouseWheel>,
@@ -162,5 +152,89 @@ fn move_camera(
         let zoom_delta = -event.y * ZOOM_SPEED;
         let new_scale = projection.scale * (1.0 + zoom_delta);
         projection.scale = new_scale.clamp(MIN_ZOOM, MAX_ZOOM);
+    }
+}
+
+#[derive(Component)]
+struct Menu;
+
+fn show_menu(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    menus: Query<(Entity), With<Menu>>,
+    block_list: Res<block::BlockList>,
+    asset_server: Res<AssetServer>,
+) {
+    if buttons.just_pressed(MouseButton::Right) {
+        if let Some(screen_pos) = window_query.single().cursor_position() {
+            /*
+            let (camera, camera_transform) = camera_query.single();
+            if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) {
+                let newblock = block::Block {
+                    text: (0..7).map(|_| rng.sample(Alphanumeric) as char).collect(),
+                    position: Vec2::new(world_pos.x, world_pos.y),
+                    block_type: block::BlockType::Expression,
+                };
+                block::spawn_block(&mut commands, newblock, asset_server);
+            }
+            */
+            for menu in menus.iter() {
+                commands.entity(menu).despawn_recursive();
+                return;
+            }
+
+            commands
+                .spawn((
+                    Node {
+                        width: Val::Px(200.0),
+                        height: Val::Px(400.0),
+                        left: Val::Px(screen_pos.x),
+                        top: Val::Px(screen_pos.y),
+                        overflow: Overflow::clip(),
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(15.0)),
+                        row_gap: Val::Px(3.0),
+                        column_gap: Val::Px(3.0),
+                        ..Default::default()
+                    },
+                    BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.8)),
+                    Menu,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Node {
+                            width: Val::Px(170.0),
+                            border: UiRect::all(Val::Px(5.0)),
+                            ..Default::default()
+                        },
+                        BackgroundColor::from(Color::srgba(0.2, 0.2, 0.2, 0.9)),
+                        TextInput,
+                    ));
+
+                    for i in 0..block_list.items.len() {
+                        parent
+                            .spawn((
+                                Button,
+                                Node {
+                                    width: Val::Px(170.0),
+                                    height: Val::Px(20.0),
+                                    border: UiRect::all(Val::Px(5.0)),
+                                    ..Default::default()
+                                },
+                                BackgroundColor::from(Color::srgba(0.2, 0.2, 0.2, 0.9)),
+                            ))
+                            .with_child((
+                                Text::new(block_list.items[i].text.clone()),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraCode-Medium.ttf"),
+                                    font_size: 10.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                            ));
+                    }
+                });
+        }
     }
 }

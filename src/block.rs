@@ -15,6 +15,16 @@ pub struct Block {
     pub block_type: BlockType,
 }
 
+pub struct BlockData {
+    pub text: String,
+    pub block_type: BlockType,
+}
+
+#[derive(Resource, Default)]
+pub struct BlockList {
+    pub items: Vec<BlockData>,
+}
+
 // ドラッグ可能なことを示すマーカーコンポーネント
 #[derive(Component)]
 pub struct Draggable;
