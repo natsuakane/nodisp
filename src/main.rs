@@ -53,6 +53,10 @@ fn setup(mut commands: Commands, mut block_list: ResMut<block::BlockList>) {
             text: String::from("print"),
             block_type: block::BlockType::Function,
         },
+        block::BlockData {
+            text: String::from("println"),
+            block_type: block::BlockType::Function,
+        },
     ];
 }
 
@@ -272,10 +276,9 @@ fn menu_search(
             if !(&block_list.items[i].text.clone()).contains(&(event.value)) {
                 continue;
             }
-            commands
-                .entity(event.entity)
-                .with_children(|parent| {
-                    parent.spawn((
+            commands.entity(event.entity).with_children(|parent| {
+                parent
+                    .spawn((
                         Button,
                         Node {
                             width: Val::Px(170.0),
@@ -285,17 +288,17 @@ fn menu_search(
                         },
                         BlockItem,
                         BackgroundColor::from(Color::srgba(0.2, 0.2, 0.2, 0.9)),
+                    ))
+                    .with_child((
+                        Text::new(block_list.items[i].text.clone()),
+                        TextFont {
+                            font: asset_server.load("fonts/FiraCode-Medium.ttf"),
+                            font_size: 10.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.9, 0.9, 0.9)),
                     ));
-                })
-                .with_child((
-                    Text::new(block_list.items[i].text.clone()),
-                    TextFont {
-                        font: asset_server.load("fonts/FiraCode-Medium.ttf"),
-                        font_size: 10.0,
-                        ..default()
-                    },
-                    TextColor(Color::srgb(0.9, 0.9, 0.9)),
-                ));
+            });
         }
 
         println!("{:?} submitted: {}", event.entity, event.value);
