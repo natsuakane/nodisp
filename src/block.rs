@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::text::*;
 use bevy::window::PrimaryWindow;
 
+#[derive(Copy, Clone)]
 pub enum BlockType {
     Statement,
     Expression,
@@ -9,12 +10,21 @@ pub enum BlockType {
     Variable,
 }
 
-pub struct Block {
-    pub text: String,
-    pub position: Vec2,
-    pub block_type: BlockType,
+pub fn newBlockType(bt: BlockType) -> BlockType {
+    match bt {
+        BlockType::Statement => BlockType::Statement,
+        BlockType::Expression => BlockType::Expression,
+        BlockType::Function => BlockType::Function,
+        BlockType::Variable => BlockType::Variable,
+    }
 }
 
+pub struct Block {
+    pub data: BlockData,
+    pub position: Vec2,
+}
+
+#[derive(Clone)]
 pub struct BlockData {
     pub text: String,
     pub block_type: BlockType,
@@ -37,10 +47,10 @@ pub struct DragState {
     pub is_dragging: bool,
 }
 
-pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: Res<AssetServer>) {
+pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: &AssetServer) {
     let text_entity = commands
         .spawn((
-            Text2d::new(String::from(block.text.clone())),
+            Text2d::new(String::from(block.data.text.clone())),
             TextColor(Color::srgb(1.0, 1.0, 1.0)),
             TextFont {
                 font: asset_server.load("fonts/FiraCode-Medium.ttf"),
@@ -52,7 +62,7 @@ pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: Res<Asse
         .id();
     let typetext_entity = commands
         .spawn((
-            Text2d::new(String::from(match block.block_type {
+            Text2d::new(String::from(match block.data.block_type {
                 BlockType::Statement => "statement",
                 BlockType::Expression => "expression",
                 BlockType::Function => "function",
@@ -65,7 +75,7 @@ pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: Res<Asse
                 ..Default::default()
             },
             Transform::from_xyz(
-                block.text.clone().len() as f32 * -15.0 / 2.0 + 20.0,
+                block.data.text.clone().len() as f32 * -15.0 / 2.0 + 20.0,
                 15.0,
                 1.0,
             ),
@@ -76,7 +86,7 @@ pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: Res<Asse
             Sprite {
                 color: Color::srgba(0.0, 0.0, 0.0, 0.9),
                 custom_size: Some(Vec2::new(
-                    block.text.clone().len() as f32 * 15.0 + 5.0,
+                    block.data.text.clone().len() as f32 * 15.0 + 5.0,
                     25.0,
                 )),
                 ..Default::default()
@@ -87,13 +97,13 @@ pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: Res<Asse
     commands
         .spawn((
             Sprite {
-                color: match block.block_type {
+                color: match block.data.block_type {
                     BlockType::Statement => Color::srgb(1.0, 0.3, 0.3),
                     BlockType::Expression => Color::srgb(0.1, 0.8, 0.1),
                     BlockType::Function => Color::srgb(0.3, 0.3, 1.0),
                     BlockType::Variable => Color::srgb(0.3, 0.3, 0.3),
                 },
-                custom_size: Some(Vec2::new(block.text.clone().len() as f32 * 15.0, 20.0)),
+                custom_size: Some(Vec2::new(block.data.text.clone().len() as f32 * 15.0, 20.0)),
                 ..Default::default()
             },
             Transform::from_xyz(block.position.x, block.position.y, 0.0),

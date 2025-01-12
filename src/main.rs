@@ -1,3 +1,5 @@
+use std::collections::hash_set::Intersection;
+
 use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
@@ -18,6 +20,7 @@ fn main() {
         .add_systems(Update, move_camera) // マウス操作を登録
         .add_systems(Update, show_menu) // ブロック配置
         .add_systems(Update, menu_search.after(TextInputSystem)) // テキストインプットイベント
+        .add_systems(Update, spawn_block_button) // ブロック配置
         .insert_resource(block::DragState::default()) // リソース追加
         .insert_resource(block::BlockList::default()) // ブロックのリストを追加
         .add_systems(Update, block::drag_system) // ドラッグできるようにする
@@ -164,7 +167,9 @@ fn move_camera(
 struct Menu;
 
 #[derive(Component)]
-struct BlockItem;
+struct BlockItem {
+    pub data: block::BlockData,
+}
 
 fn show_menu(
     mut commands: Commands,
@@ -176,17 +181,6 @@ fn show_menu(
 ) {
     if buttons.just_pressed(MouseButton::Right) {
         if let Some(screen_pos) = window_query.single().cursor_position() {
-            /*
-            let (camera, camera_transform) = camera_query.single();
-            if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) {
-                let newblock = block::Block {
-                    text: (0..7).map(|_| rng.sample(Alphanumeric) as char).collect(),
-                    position: Vec2::new(world_pos.x, world_pos.y),
-                    block_type: block::BlockType::Expression,
-                };
-                block::spawn_block(&mut commands, newblock, asset_server);
-            }
-            */
             for menu in menus.iter() {
                 commands.entity(menu).despawn_recursive();
                 return;
@@ -231,7 +225,12 @@ fn show_menu(
                                             border: UiRect::all(Val::Px(5.0)),
                                             ..Default::default()
                                         },
-                                        BlockItem,
+                                        BlockItem {
+                                            data: block::BlockData {
+                                                text: block_list.items[i].text.clone(),
+                                                block_type: block_list.items[i].block_type,
+                                            },
+                                        },
                                         BackgroundColor::from(Color::srgba(0.2, 0.2, 0.2, 0.9)),
                                     ))
                                     .with_child((
@@ -253,7 +252,6 @@ fn show_menu(
 fn menu_search(
     mut commands: Commands,
     mut events: EventReader<TextInputSubmitEvent>,
-    menus: Query<(Entity), With<Menu>>,
     block_list: Res<block::BlockList>,
     children: Query<(Entity, &Parent), With<BlockItem>>,
     asset_server: Res<AssetServer>,
@@ -261,18 +259,11 @@ fn menu_search(
     for event in events.read() {
         for (child_entity, parent) in children.iter() {
             if parent.get() == event.entity {
-                println!("AAA");
                 commands.entity(child_entity).despawn_recursive();
             }
         }
 
         for i in 0..block_list.items.len() {
-            println!(
-                "{},{},{}",
-                &(event.value),
-                &block_list.items[i].text.clone(),
-                (&block_list.items[i].text.clone()).contains(&(event.value))
-            );
             if !(&block_list.items[i].text.clone()).contains(&(event.value)) {
                 continue;
             }
@@ -286,7 +277,12 @@ fn menu_search(
                             border: UiRect::all(Val::Px(5.0)),
                             ..Default::default()
                         },
-                        BlockItem,
+                        BlockItem {
+                            data: block::BlockData {
+                                text: block_list.items[i].text.clone(),
+                                block_type: block_list.items[i].block_type,
+                            },
+                        },
                         BackgroundColor::from(Color::srgba(0.2, 0.2, 0.2, 0.9)),
                     ))
                     .with_child((
@@ -302,5 +298,58 @@ fn menu_search(
         }
 
         println!("{:?} submitted: {}", event.entity, event.value);
+    }
+}
+
+fn spawn_block_button(
+    mut commands: Commands,
+    mut interaction_query: Query<
+        (
+            &Interaction,
+            &mut BackgroundColor,
+            &mut BorderColor,
+            &Children,
+            &BlockItem,
+        ),
+        (Changed<Interaction>, With<BlockItem>),
+    >,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    asset_server: Res<AssetServer>,
+    menus: Query<(Entity), With<Menu>>,
+) {
+    for (interaction, mut color, mut border_color, children, block_item) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                *color = Color::srgba(0.8, 0.8, 0.8, 0.8).into();
+                border_color.0 = Color::srgba(0.8, 0.8, 0.8, 0.8).into();
+
+                let window = window_query.single();
+                let (camera, camera_transform) = camera_query.single();
+                if let Some(screen_pos) = window.cursor_position() {
+                    if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos)
+                    {
+                        let newblock = block::Block {
+                            data: block_item.data.clone(),
+                            position: Vec2::new(world_pos.x, world_pos.y),
+                        };
+                        block::spawn_block(&mut commands, newblock, asset_server.as_ref());
+                    }
+                }
+
+                for menu in menus.iter() {
+                    commands.entity(menu).despawn_recursive();
+                    return;
+                }
+            }
+            Interaction::Hovered => {
+                *color = Color::srgba(0.7, 0.7, 0.7, 0.8).into();
+                border_color.0 = Color::srgba(0.7, 0.7, 0.7, 0.8).into();
+            }
+            Interaction::None => {
+                *color = Color::srgba(0.2, 0.2, 0.2, 0.9).into();
+                border_color.0 = Color::srgba(0.2, 0.2, 0.2, 0.9).into();
+            }
+        }
     }
 }
