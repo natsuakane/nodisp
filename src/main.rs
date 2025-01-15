@@ -33,24 +33,24 @@ fn setup(mut commands: Commands, mut block_list: ResMut<block::BlockList>) {
 
     block_list.items = vec![
         block::BlockData {
-            text: String::from("+"),
-            block_type: block::BlockType::Expression,
+            text: String::from("add"),
+            block_type: block::BlockType::Function,
         },
         block::BlockData {
-            text: String::from("-"),
-            block_type: block::BlockType::Expression,
+            text: String::from("sub"),
+            block_type: block::BlockType::Function,
         },
         block::BlockData {
-            text: String::from("*"),
-            block_type: block::BlockType::Expression,
+            text: String::from("mul"),
+            block_type: block::BlockType::Function,
         },
         block::BlockData {
-            text: String::from("/"),
-            block_type: block::BlockType::Expression,
+            text: String::from("div"),
+            block_type: block::BlockType::Function,
         },
         block::BlockData {
-            text: String::from("%"),
-            block_type: block::BlockType::Expression,
+            text: String::from("mod"),
+            block_type: block::BlockType::Function,
         },
         block::BlockData {
             text: String::from("print"),
@@ -308,7 +308,6 @@ fn spawn_block_button(
             &Interaction,
             &mut BackgroundColor,
             &mut BorderColor,
-            &Children,
             &BlockItem,
         ),
         (Changed<Interaction>, With<BlockItem>),
@@ -318,7 +317,7 @@ fn spawn_block_button(
     asset_server: Res<AssetServer>,
     menus: Query<(Entity), With<Menu>>,
 ) {
-    for (interaction, mut color, mut border_color, children, block_item) in &mut interaction_query {
+    for (interaction, mut color, mut border_color, block_item) in &mut interaction_query {
         match *interaction {
             Interaction::Pressed => {
                 *color = Color::srgba(0.8, 0.8, 0.8, 0.8).into();

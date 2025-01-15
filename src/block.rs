@@ -5,7 +5,7 @@ use bevy::window::PrimaryWindow;
 #[derive(Copy, Clone)]
 pub enum BlockType {
     Statement,
-    Expression,
+    Value,
     Function,
     Variable,
 }
@@ -13,7 +13,7 @@ pub enum BlockType {
 pub fn newBlockType(bt: BlockType) -> BlockType {
     match bt {
         BlockType::Statement => BlockType::Statement,
-        BlockType::Expression => BlockType::Expression,
+        BlockType::Value => BlockType::Value,
         BlockType::Function => BlockType::Function,
         BlockType::Variable => BlockType::Variable,
     }
@@ -64,7 +64,7 @@ pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: &AssetSe
         .spawn((
             Text2d::new(String::from(match block.data.block_type {
                 BlockType::Statement => "statement",
-                BlockType::Expression => "expression",
+                BlockType::Value => "value",
                 BlockType::Function => "function",
                 BlockType::Variable => "variable",
             })),
@@ -99,7 +99,7 @@ pub fn spawn_block(commands: &mut Commands, block: Block, asset_server: &AssetSe
             Sprite {
                 color: match block.data.block_type {
                     BlockType::Statement => Color::srgb(1.0, 0.3, 0.3),
-                    BlockType::Expression => Color::srgb(0.1, 0.8, 0.1),
+                    BlockType::Value => Color::srgb(0.1, 0.8, 0.1),
                     BlockType::Function => Color::srgb(0.3, 0.3, 1.0),
                     BlockType::Variable => Color::srgb(0.3, 0.3, 0.3),
                 },
