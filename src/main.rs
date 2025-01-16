@@ -22,12 +22,13 @@ fn main() {
         .add_systems(Update, menu_search.after(TextInputSystem)) // テキストインプットイベント
         .add_systems(Update, spawn_block_button) // ブロック配置
         .insert_resource(block::DragState::default()) // リソース追加
-        .insert_resource(block::BlockList::default()) // ブロックのリストを追加
+        .insert_resource(block::BlockDataList::default()) // ブロックのリストを追加
+        .insert_resource(block::BlockList::default()) // 出されたブロックのリストを追加
         .add_systems(Update, block::drag_system) // ドラッグできるようにする
         .run();
 }
 
-fn setup(mut commands: Commands, mut block_list: ResMut<block::BlockList>) {
+fn setup(mut commands: Commands, mut block_list: ResMut<block::BlockDataList>) {
     // 2Dカメラを追加（四角形を描画するために必要）
     commands.spawn(Camera2d::default());
 
@@ -35,30 +36,44 @@ fn setup(mut commands: Commands, mut block_list: ResMut<block::BlockList>) {
         block::BlockData {
             text: String::from("add"),
             block_type: block::BlockType::Function,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
         },
         block::BlockData {
             text: String::from("sub"),
             block_type: block::BlockType::Function,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
         },
         block::BlockData {
             text: String::from("mul"),
             block_type: block::BlockType::Function,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
         },
         block::BlockData {
             text: String::from("div"),
             block_type: block::BlockType::Function,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
         },
         block::BlockData {
             text: String::from("mod"),
             block_type: block::BlockType::Function,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
         },
         block::BlockData {
             text: String::from("print"),
             block_type: block::BlockType::Function,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
         },
         block::BlockData {
             text: String::from("println"),
             block_type: block::BlockType::Function,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
         },
     ];
 }
@@ -176,7 +191,7 @@ fn show_menu(
     window_query: Query<&Window, With<PrimaryWindow>>,
     buttons: Res<ButtonInput<MouseButton>>,
     menus: Query<(Entity), With<Menu>>,
-    block_list: Res<block::BlockList>,
+    block_list: Res<block::BlockDataList>,
     asset_server: Res<AssetServer>,
 ) {
     if buttons.just_pressed(MouseButton::Right) {
@@ -229,6 +244,12 @@ fn show_menu(
                                             data: block::BlockData {
                                                 text: block_list.items[i].text.clone(),
                                                 block_type: block_list.items[i].block_type,
+                                                input_value_types: block_list.items[i]
+                                                    .input_value_types
+                                                    .clone(),
+                                                output_value_type: block_list.items[i]
+                                                    .output_value_type
+                                                    .clone(),
                                             },
                                         },
                                         BackgroundColor::from(Color::srgba(0.2, 0.2, 0.2, 0.9)),
@@ -252,7 +273,7 @@ fn show_menu(
 fn menu_search(
     mut commands: Commands,
     mut events: EventReader<TextInputSubmitEvent>,
-    block_list: Res<block::BlockList>,
+    block_list: Res<block::BlockDataList>,
     children: Query<(Entity, &Parent), With<BlockItem>>,
     asset_server: Res<AssetServer>,
 ) {
@@ -281,6 +302,8 @@ fn menu_search(
                             data: block::BlockData {
                                 text: block_list.items[i].text.clone(),
                                 block_type: block_list.items[i].block_type,
+                                input_value_types: block_list.items[i].input_value_types.clone(),
+                                output_value_type: block_list.items[i].output_value_type.clone(),
                             },
                         },
                         BackgroundColor::from(Color::srgba(0.2, 0.2, 0.2, 0.9)),
@@ -316,6 +339,7 @@ fn spawn_block_button(
     camera_query: Query<(&Camera, &GlobalTransform)>,
     asset_server: Res<AssetServer>,
     menus: Query<(Entity), With<Menu>>,
+    mut block_list: ResMut<block::BlockList>,
 ) {
     for (interaction, mut color, mut border_color, block_item) in &mut interaction_query {
         match *interaction {
@@ -331,8 +355,14 @@ fn spawn_block_button(
                         let newblock = block::Block {
                             data: block_item.data.clone(),
                             position: Vec2::new(world_pos.x, world_pos.y),
+                            inputs: vec![],
                         };
-                        block::spawn_block(&mut commands, newblock, asset_server.as_ref());
+                        block::spawn_block(
+                            &mut commands,
+                            newblock,
+                            asset_server.as_ref(),
+                            &mut block_list,
+                        );
                     }
                 }
 
