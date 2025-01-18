@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use rand::Rng;
 use std::collections::HashMap;
+use std::f64::consts::PI;
 
 #[derive(Copy, Clone)]
 pub enum BlockType {
@@ -14,7 +15,7 @@ pub enum BlockType {
 pub struct Block {
     pub data: BlockData,
     pub position: Vec2,
-    pub inputs: Vec<Block>,
+    pub inputs: Vec<u32>,
 }
 
 #[derive(Clone)]
@@ -199,7 +200,7 @@ pub fn spawn_line(
     commands: &mut Commands,
     line: Line,
     asset_server: &AssetServer,
-    block_list: &Res<BlockList>,
+    block_list: &ResMut<BlockList>,
     block_query: Query<&Transform, With<Draggable>>,
 ) {
     if let (Ok(start), Ok(end)) = (
@@ -218,6 +219,37 @@ pub fn spawn_line(
                     ..Default::default()
                 },
                 Transform::from_xyz(0.0, 0.0, -100.0),
+            ))
+            .id();
+
+        // 矢印
+        let arrow_entity1 = commands
+            .spawn((
+                Sprite {
+                    color: Color::WHITE,
+                    custom_size: Some(Vec2::new(10.0, 2.0)),
+                    ..Default::default()
+                },
+                Transform {
+                    translation: Vec3::new(0.0, 3.0, -100.0),
+                    rotation: Quat::from_rotation_z(-PI as f32 / 6.0),
+                    ..Default::default()
+                },
+            ))
+            .id();
+        // 矢印
+        let arrow_entity2 = commands
+            .spawn((
+                Sprite {
+                    color: Color::WHITE,
+                    custom_size: Some(Vec2::new(10.0, 2.0)),
+                    ..Default::default()
+                },
+                Transform {
+                    translation: Vec3::new(0.0, -3.0, -100.0),
+                    rotation: Quat::from_rotation_z(PI as f32 / 6.0),
+                    ..Default::default()
+                },
             ))
             .id();
 
@@ -249,7 +281,9 @@ pub fn spawn_line(
                     label: line.label.clone(),
                 },
             ))
-            .add_child(text_entity);
+            .add_child(text_entity)
+            .add_child(arrow_entity1)
+            .add_child(arrow_entity2);
     }
 }
 
@@ -260,7 +294,7 @@ pub fn connect_blocks(
     keyboard: Res<ButtonInput<KeyCode>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
-    block_list: Res<BlockList>,
+    mut block_list: ResMut<BlockList>,
     mut queries: ParamSet<(
         Query<(Entity, &mut Transform, &Draggable), With<Draggable>>,
         Query<&mut Transform, With<Draggable>>,
@@ -303,6 +337,15 @@ pub fn connect_blocks(
                                     &block_list,
                                     queries.p3(),
                                 );
+
+                                block_list
+                                    .as_mut()
+                                    .item
+                                    .get_mut(&END)
+                                    .unwrap()
+                                    .1
+                                    .inputs
+                                    .push(START);
 
                                 START = 0;
                                 END = 0;
