@@ -1,5 +1,3 @@
-use std::collections::hash_set::Intersection;
-
 use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
@@ -21,6 +19,7 @@ fn main() {
         .add_systems(Update, show_menu) // ブロック配置
         .add_systems(Update, menu_search.after(TextInputSystem)) // テキストインプットイベント
         .add_systems(Update, spawn_block_button) // ブロック配置
+        .add_systems(Update, block::connect_blocks) // 接続
         .insert_resource(block::DragState::default()) // リソース追加
         .insert_resource(block::BlockDataList::default()) // ブロックのリストを追加
         .insert_resource(block::BlockList::default()) // 出されたブロックのリストを追加
@@ -190,7 +189,7 @@ fn show_menu(
     mut commands: Commands,
     window_query: Query<&Window, With<PrimaryWindow>>,
     buttons: Res<ButtonInput<MouseButton>>,
-    menus: Query<(Entity), With<Menu>>,
+    menus: Query<Entity, With<Menu>>,
     block_list: Res<block::BlockDataList>,
     asset_server: Res<AssetServer>,
 ) {
@@ -338,7 +337,7 @@ fn spawn_block_button(
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
     asset_server: Res<AssetServer>,
-    menus: Query<(Entity), With<Menu>>,
+    menus: Query<Entity, With<Menu>>,
     mut block_list: ResMut<block::BlockList>,
 ) {
     for (interaction, mut color, mut border_color, block_item) in &mut interaction_query {

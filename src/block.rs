@@ -11,15 +11,6 @@ pub enum BlockType {
     Variable,
 }
 
-pub fn newBlockType(bt: BlockType) -> BlockType {
-    match bt {
-        BlockType::Statement => BlockType::Statement,
-        BlockType::Value => BlockType::Value,
-        BlockType::Function => BlockType::Function,
-        BlockType::Variable => BlockType::Variable,
-    }
-}
-
 pub struct Block {
     pub data: BlockData,
     pub position: Vec2,
@@ -58,6 +49,7 @@ pub struct DragState {
     pub is_dragging: bool,
 }
 
+#[derive(Component)]
 pub struct Line {
     start: u32, // id
     end: u32,
@@ -117,7 +109,7 @@ pub fn spawn_block(
         ))
         .id();
     let mut rng = rand::thread_rng();
-    let random_id: u32 = rng.gen_range(u32::MIN..=u32::MAX);
+    let random_id: u32 = rng.gen_range(1..=u32::MAX); // 0を除く
     let block_entity = commands
         .spawn((
             Sprite {
@@ -207,7 +199,7 @@ pub fn spawn_line(
     commands: &mut Commands,
     line: Line,
     asset_server: &AssetServer,
-    block_list: Res<BlockList>,
+    block_list: &Res<BlockList>,
     block_query: Query<&Transform, With<Draggable>>,
 ) {
     if let (Ok(start), Ok(end)) = (
@@ -225,7 +217,7 @@ pub fn spawn_line(
                     font_size: 20.0,
                     ..Default::default()
                 },
-                Transform::from_xyz(0.0, 0.0, 1.0),
+                Transform::from_xyz(0.0, 0.0, -100.0),
             ))
             .id();
 
@@ -246,12 +238,107 @@ pub fn spawn_line(
                     translation: Vec3::new(
                         start.x + difference.x / 2.0, // 中点のx座標
                         start.y + difference.y / 2.0, // 中点のy座標
-                        0.0,
+                        -100.0,
                     ),
                     rotation: Quat::from_rotation_z(rotation),
                     ..default()
                 },
+                Line {
+                    start: line.start,
+                    end: line.end,
+                    label: line.label.clone(),
+                },
             ))
             .add_child(text_entity);
+    }
+}
+
+pub fn connect_blocks(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    block_list: Res<BlockList>,
+    mut queries: ParamSet<(
+        Query<(Entity, &mut Transform, &Draggable), With<Draggable>>,
+        Query<&mut Transform, With<Draggable>>,
+        Query<(Entity, &mut Transform), With<Draggable>>,
+        Query<&Transform, With<Draggable>>,
+    )>,
+    mut line_query: Query<
+        (Entity, &mut Transform, &mut Sprite, &Line),
+        (With<Line>, Without<Draggable>),
+    >,
+) {
+    static mut START: u32 = 0;
+    static mut END: u32 = 0;
+
+    let window = window_query.single();
+    let (camera, camera_transform) = camera_query.single();
+
+    if let Some(cursor_position) = window.cursor_position() {
+        // カーソル位置をワールド座標に変換
+        if let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) {
+            if mouse_button.just_pressed(MouseButton::Left) && keyboard.pressed(KeyCode::Tab) {
+                for (_, transform, draggable) in queries.p0().iter() {
+                    let sprite_pos = transform.translation.truncate();
+                    if world_position.distance(sprite_pos) < 25.0 {
+                        // 判定範囲
+                        unsafe {
+                            if START == 0 {
+                                START = draggable.id;
+                            } else if START != END {
+                                END = draggable.id;
+                                let line = Line {
+                                    start: START,
+                                    end: END,
+                                    label: "".to_string(),
+                                };
+                                spawn_line(
+                                    &mut commands,
+                                    line,
+                                    &asset_server,
+                                    &block_list,
+                                    queries.p3(),
+                                );
+
+                                START = 0;
+                                END = 0;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    for (entity, mut transform, mut sprite, line) in line_query.iter_mut() {
+        let start_entity = block_list.as_ref().item[&line.start].0;
+        let end_entity = block_list.as_ref().item[&line.end].0;
+        let query = queries.p1();
+        if let (Ok(start), Ok(end)) = (query.get(start_entity), query.get(end_entity)) {
+            let start = start.translation;
+            let end = end.translation;
+
+            // 線の長さと角度を計算
+            let difference = end - start;
+            let length = difference.length();
+            let rotation = difference.y.atan2(difference.x);
+
+            let newpos = Vec3::new(
+                start.x + difference.x / 2.0, // 中点のx座標
+                start.y + difference.y / 2.0, // 中点のy座標
+                -100.0,
+            );
+            transform.translation.x = newpos.x;
+            transform.translation.y = newpos.y;
+            transform.rotation = Quat::from_rotation_z(rotation);
+            sprite.custom_size = Some(Vec2::new(length, 2.0));
+        } else {
+            commands.entity(entity).despawn_recursive();
+        }
     }
 }
