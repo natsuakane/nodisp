@@ -27,11 +27,22 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands, mut block_list: ResMut<block::BlockDataList>) {
+fn setup(
+    mut commands: Commands,
+    mut block_data_list: ResMut<block::BlockDataList>,
+    mut block_list: ResMut<block::BlockList>,
+    block_query: Query<&Transform, With<block::Draggable>>,
+    asset_server: Res<AssetServer>,
+) {
     // 2Dカメラを追加（四角形を描画するために必要）
     commands.spawn(Camera2d::default());
 
-    block_list.items = vec![
+    const BLOCKPLACE: usize = 7;
+    const DEFINEPLACE: usize = 8;
+    const LAMBDAPLACE: usize = 9;
+    const LISTPLACE: usize = 10;
+
+    block_data_list.items = vec![
         block::BlockData {
             text: String::from("add"),
             block_type: block::BlockType::Function,
@@ -74,7 +85,75 @@ fn setup(mut commands: Commands, mut block_list: ResMut<block::BlockDataList>) {
             input_value_types: vec![],
             output_value_type: String::from(""),
         },
+        block::BlockData {
+            text: String::from("block"),
+            block_type: block::BlockType::Block,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
+        },
+        block::BlockData {
+            text: String::from("define"),
+            block_type: block::BlockType::Statement,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
+        },
+        block::BlockData {
+            text: String::from("lambda"),
+            block_type: block::BlockType::Statement,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
+        },
+        block::BlockData {
+            text: String::from("list"),
+            block_type: block::BlockType::Function,
+            input_value_types: vec![],
+            output_value_type: String::from(""),
+        },
     ];
+
+    block::spawn_block(
+        &mut commands,
+        block::Block {
+            data: block_data_list.items[BLOCKPLACE].clone(),
+            position: Vec2::new(400.0, 0.0),
+            inputs: vec![],
+        },
+        asset_server.as_ref(),
+        &mut block_list,
+    );
+
+    block::spawn_block(
+        &mut commands,
+        block::Block {
+            data: block_data_list.items[DEFINEPLACE].clone(),
+            position: Vec2::new(0.0, 0.0),
+            inputs: vec![],
+        },
+        asset_server.as_ref(),
+        &mut block_list,
+    );
+
+    block::spawn_block(
+        &mut commands,
+        block::Block {
+            data: block_data_list.items[LAMBDAPLACE].clone(),
+            position: Vec2::new(200.0, 0.0),
+            inputs: vec![],
+        },
+        asset_server.as_ref(),
+        &mut block_list,
+    );
+
+    block::spawn_block(
+        &mut commands,
+        block::Block {
+            data: block_data_list.items[LISTPLACE].clone(),
+            position: Vec2::new(400.0, 300.0),
+            inputs: vec![],
+        },
+        asset_server.as_ref(),
+        &mut block_list,
+    );
 }
 
 fn spawn_grid(mut commands: Commands) {
@@ -93,7 +172,7 @@ fn spawn_grid(mut commands: Commands) {
                 custom_size: Some(Vec2::new(line_thickness, grid_size)),
                 ..Default::default()
             },
-            Transform::from_xyz(x_position, 0.0, -1.0),
+            Transform::from_xyz(x_position, 0.0, -101.0),
         ));
     }
 
@@ -106,7 +185,7 @@ fn spawn_grid(mut commands: Commands) {
                 custom_size: Some(Vec2::new(grid_size, line_thickness)),
                 ..Default::default()
             },
-            Transform::from_xyz(0.0, y_position, -1.0),
+            Transform::from_xyz(0.0, y_position, -101.0),
         ));
     }
 }

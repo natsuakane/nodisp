@@ -10,6 +10,7 @@ pub enum BlockType {
     Value,
     Function,
     Variable,
+    Block,
 }
 
 pub struct Block {
@@ -52,9 +53,9 @@ pub struct DragState {
 
 #[derive(Component)]
 pub struct Line {
-    start: u32, // id
-    end: u32,
-    label: String,
+    pub start: u32, // id
+    pub end: u32,
+    pub label: String,
 }
 
 pub fn spawn_block(
@@ -62,7 +63,7 @@ pub fn spawn_block(
     block: Block,
     asset_server: &AssetServer,
     block_list: &mut BlockList,
-) {
+) -> u32 {
     let text_entity = commands
         .spawn((
             Text2d::new(String::from(block.data.text.clone())),
@@ -82,6 +83,7 @@ pub fn spawn_block(
                 BlockType::Value => "value",
                 BlockType::Function => "function",
                 BlockType::Variable => "variable",
+                BlockType::Block => "block",
             })),
             TextColor(Color::srgb(1.0, 1.0, 1.0)),
             TextFont {
@@ -119,6 +121,7 @@ pub fn spawn_block(
                     BlockType::Value => Color::srgb(0.1, 0.8, 0.1),
                     BlockType::Function => Color::srgb(0.3, 0.3, 1.0),
                     BlockType::Variable => Color::srgb(0.3, 0.3, 0.3),
+                    BlockType::Block => Color::srgb(0.1, 0.1, 0.1),
                 },
                 custom_size: Some(Vec2::new(block.data.text.clone().len() as f32 * 15.0, 20.0)),
                 ..Default::default()
@@ -131,6 +134,8 @@ pub fn spawn_block(
         .add_child(shadow_entity)
         .id();
     block_list.item.insert(random_id, (block_entity, block));
+
+    random_id
 }
 
 pub fn drag_system(
@@ -203,6 +208,11 @@ pub fn spawn_line(
     block_list: &ResMut<BlockList>,
     block_query: Query<&Transform, With<Draggable>>,
 ) {
+    println!("{},{}, {}", &line.start, &line.end, block_list.item.len(),);
+    println!(
+        "{}",
+        block_list.item.keys().cloned().collect::<Vec<u32>>()[0]
+    );
     if let (Ok(start), Ok(end)) = (
         block_query.get(block_list.item[&line.start].0),
         block_query.get(block_list.item[&line.end].0),
@@ -218,7 +228,11 @@ pub fn spawn_line(
                     font_size: 20.0,
                     ..Default::default()
                 },
-                Transform::from_xyz(0.0, 0.0, -100.0),
+                Transform {
+                    translation: Vec3::new(0.0, -13.0, -100.0),
+                    rotation: Quat::from_rotation_z(PI as f32),
+                    ..Default::default()
+                },
             ))
             .id();
 
@@ -284,7 +298,9 @@ pub fn spawn_line(
             .add_child(text_entity)
             .add_child(arrow_entity1)
             .add_child(arrow_entity2);
-    }
+    } else {
+        println!("failed to connect blocks.")
+    };
 }
 
 pub fn connect_blocks(
@@ -328,7 +344,16 @@ pub fn connect_blocks(
                                 let line = Line {
                                     start: START,
                                     end: END,
-                                    label: "".to_string(),
+                                    label: (block_list
+                                        .as_mut()
+                                        .item
+                                        .get_mut(&END)
+                                        .unwrap()
+                                        .1
+                                        .inputs
+                                        .len()
+                                        + 1)
+                                    .to_string(),
                                 };
                                 spawn_line(
                                     &mut commands,
