@@ -9,22 +9,21 @@ pub enum BlockType {
     Statement,
     Value,
     Function,
-    Variable,
-    Block,
+    List,
+    Identifier,
 }
 
 pub struct Block {
     pub data: BlockData,
     pub position: Vec2,
     pub inputs: Vec<u32>,
+    pub comment: String,
 }
 
 #[derive(Clone)]
 pub struct BlockData {
     pub text: String,
     pub block_type: BlockType,
-    pub input_value_types: Vec<String>,
-    pub output_value_type: String,
 }
 
 #[derive(Resource, Default)]
@@ -49,6 +48,11 @@ pub struct DragState {
     dragged_entity: Option<Entity>,
     drag_start: Option<Vec2>,
     pub is_dragging: bool,
+}
+
+#[derive(Resource, Default)]
+pub struct StartBlock {
+    start_block: u32,
 }
 
 #[derive(Component)]
@@ -76,15 +80,18 @@ pub fn spawn_block(
             Transform::from_xyz(0.0, 0.0, 1.0),
         ))
         .id();
-    let typetext_entity = commands
+    let typetext_entity = commands // it also adds comment
         .spawn((
-            Text2d::new(String::from(match block.data.block_type {
-                BlockType::Statement => "statement",
-                BlockType::Value => "value",
-                BlockType::Function => "function",
-                BlockType::Variable => "variable",
-                BlockType::Block => "block",
-            })),
+            Text2d::new(
+                String::from(match block.data.block_type {
+                    BlockType::Statement => "statement",
+                    BlockType::Value => "value",
+                    BlockType::Function => "function",
+                    BlockType::List => "list",
+                    BlockType::Identifier => "identifier",
+                }) + " : "
+                    + &block.comment,
+            ),
             TextColor(Color::srgb(1.0, 1.0, 1.0)),
             TextFont {
                 font: asset_server.load("fonts/FiraCode-Medium.ttf"),
@@ -120,8 +127,8 @@ pub fn spawn_block(
                     BlockType::Statement => Color::srgb(1.0, 0.3, 0.3),
                     BlockType::Value => Color::srgb(0.1, 0.8, 0.1),
                     BlockType::Function => Color::srgb(0.3, 0.3, 1.0),
-                    BlockType::Variable => Color::srgb(0.3, 0.3, 0.3),
-                    BlockType::Block => Color::srgb(0.1, 0.1, 0.1),
+                    BlockType::List => Color::srgb(0.1, 0.1, 0.1),
+                    BlockType::Identifier => Color::srgb(0.8, 0.8, 0.8),
                 },
                 custom_size: Some(Vec2::new(block.data.text.clone().len() as f32 * 15.0, 20.0)),
                 ..Default::default()
