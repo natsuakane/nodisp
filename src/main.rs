@@ -16,6 +16,8 @@ fn main() {
         .add_systems(Startup, spawn_grid) // グリッドを追加
         .add_systems(Startup, spawn_trash_area) //ゴミ箱エリアを追加
         .add_systems(Startup, spawn_value_fields) // Identifier、数値召喚用テキストインプットを追加
+        .add_systems(Startup, add_run_button) // 実行ボタン追加
+        .add_systems(Update, run_button_click) // 実行ボタンイベント
         .add_systems(Update, move_camera) // マウス操作を登録
         .add_systems(Update, show_menu) // ブロック配置
         .add_systems(Update, menu_search.after(TextInputSystem)) // テキストインプットイベント
@@ -25,6 +27,7 @@ fn main() {
         .insert_resource(block::DragState::default()) // リソース追加
         .insert_resource(block::BlockDataList::default()) // ブロックのリストを追加
         .insert_resource(block::BlockList::default()) // 出されたブロックのリストを追加
+        .insert_resource(block::StartBlock::default()) // スタート位置指定
         .add_systems(Update, block::drag_system) // ドラッグできるようにする
         .run();
 }
@@ -34,14 +37,12 @@ fn setup(
     mut block_data_list: ResMut<block::BlockDataList>,
     mut block_list: ResMut<block::BlockList>,
     asset_server: Res<AssetServer>,
+    mut start_block: ResMut<block::StartBlock>,
 ) {
     // 2Dカメラを追加（四角形を描画するために必要）
     commands.spawn(Camera2d::default());
 
-    const DEFINEPLACE: usize = 7;
-    const LAMBDAPLACE: usize = 8;
     const LISTPLACE: usize = 9;
-    const MAINPLACE: usize = 10;
 
     block_data_list.items = vec![
         block::BlockData {
@@ -84,71 +85,20 @@ fn setup(
             text: String::from("list"),
             block_type: block::BlockType::List,
         },
-        block::BlockData {
-            text: String::from("main"),
-            block_type: block::BlockType::Identifier,
-        },
     ];
 
-    block::spawn_block(
+    let id = block::spawn_block(
         &mut commands,
         block::Block {
             data: block_data_list.items[LISTPLACE].clone(),
-            position: Vec2::new(400.0, 0.0),
+            position: Vec2::new(0.0, 0.0),
             inputs: vec![],
             comment: "main block".to_string(),
         },
         asset_server.as_ref(),
         &mut block_list,
     );
-
-    block::spawn_block(
-        &mut commands,
-        block::Block {
-            data: block_data_list.items[DEFINEPLACE].clone(),
-            position: Vec2::new(0.0, 0.0),
-            inputs: vec![],
-            comment: "main define".to_string(),
-        },
-        asset_server.as_ref(),
-        &mut block_list,
-    );
-
-    block::spawn_block(
-        &mut commands,
-        block::Block {
-            data: block_data_list.items[LAMBDAPLACE].clone(),
-            position: Vec2::new(200.0, 0.0),
-            inputs: vec![],
-            comment: "function".to_string(),
-        },
-        asset_server.as_ref(),
-        &mut block_list,
-    );
-
-    block::spawn_block(
-        &mut commands,
-        block::Block {
-            data: block_data_list.items[LISTPLACE].clone(),
-            position: Vec2::new(400.0, 100.0),
-            inputs: vec![],
-            comment: "argment list".to_string(),
-        },
-        asset_server.as_ref(),
-        &mut block_list,
-    );
-
-    block::spawn_block(
-        &mut commands,
-        block::Block {
-            data: block_data_list.items[MAINPLACE].clone(),
-            position: Vec2::new(200.0, 100.0),
-            inputs: vec![],
-            comment: "main name".to_string(),
-        },
-        asset_server.as_ref(),
-        &mut block_list,
-    );
+    start_block.start_block = id;
 }
 
 fn spawn_grid(mut commands: Commands) {
@@ -234,6 +184,52 @@ fn spawn_value_fields(mut commands: Commands) {
         TextInput,
         ValueInput,
     ));
+}
+
+#[derive(Component)]
+struct RunButton;
+
+fn add_run_button(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn((
+        Button,
+        Node {
+            width: Val::Px(80.0),
+            height: Val::Px(80.0),
+            top: Val::Px(0.0),
+            right: Val::Percent(23.0),
+            position_type: PositionType::Absolute,
+            border: UiRect::all(Val::Px(5.0)),
+            ..Default::default()
+        },
+        ImageNode {
+            image: asset_server.load("images/ExecuteButton.png").clone(),
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        RunButton,
+    ));
+}
+
+fn run_button_click(
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<RunButton>),
+    >,
+) {
+    for (interaction, mut color) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                *color = Color::srgba(0.8, 0.8, 0.8, 0.4).into();
+                println!("Compiling...");
+            }
+            Interaction::Hovered => {
+                *color = Color::srgba(0.8, 0.8, 0.8, 0.2).into();
+            }
+            Interaction::None => {
+                *color = Color::srgba(0.0, 0.0, 0.0, 0.0).into();
+            }
+        };
+    }
 }
 
 fn add_value(

@@ -52,7 +52,7 @@ pub struct DragState {
 
 #[derive(Resource, Default)]
 pub struct StartBlock {
-    start_block: u32,
+    pub start_block: u32,
 }
 
 #[derive(Component)]
@@ -152,7 +152,9 @@ pub fn drag_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
-    mut sprites: Query<(Entity, &mut Transform), With<Draggable>>,
+    mut sprites: Query<(Entity, &mut Transform, &Draggable), With<Draggable>>,
+    start_block: Res<StartBlock>,
+    mut block_list: ResMut<BlockList>,
 ) {
     let window = window_query.single();
     let (camera, camera_transform) = camera_query.single();
@@ -164,7 +166,7 @@ pub fn drag_system(
             if mouse_button.just_pressed(MouseButton::Left) && keyboard.pressed(KeyCode::ShiftLeft)
             {
                 // ドラッグ開始：カーソルの位置にあるエンティティを探す
-                for (entity, transform) in sprites.iter() {
+                for (entity, transform, _) in sprites.iter() {
                     let sprite_pos = transform.translation.truncate();
                     if world_position.distance(sprite_pos) < 25.0 {
                         // 判定範囲
@@ -180,6 +182,30 @@ pub fn drag_system(
                 && keyboard.pressed(KeyCode::ShiftLeft)
                 && drag_state.dragged_entity != None
             {
+                // スタートのブロックの場合は削除させない
+                if let Some(entity) = drag_state.dragged_entity {
+                    if let Ok((_, _, draggable)) = sprites.get_mut(entity) {
+                        if draggable.id == start_block.start_block {
+                            return;
+                        }
+
+                        if block_list.item.contains_key(&draggable.id)
+                            && cursor_position.x >= window.size().x as f32 * 0.8
+                        {
+                            block_list.item.remove(&draggable.id);
+                            for block in block_list.item.iter_mut() {
+                                if block.1 .1.inputs.contains(&draggable.id) {
+                                    if let Some(pos) =
+                                        block.1 .1.inputs.iter().position(|x| *x == draggable.id)
+                                    {
+                                        block.1 .1.inputs.remove(pos);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // エンティティを削除
                 if cursor_position.x >= window.size().x as f32 * 0.8 {
                     commands
@@ -197,7 +223,7 @@ pub fn drag_system(
                 && keyboard.pressed(KeyCode::ShiftLeft)
             {
                 if let Some(entity) = drag_state.dragged_entity {
-                    if let Ok((_, mut transform)) = sprites.get_mut(entity) {
+                    if let Ok((_, mut transform, _)) = sprites.get_mut(entity) {
                         // エンティティの位置を更新
                         transform.translation.x = world_position.x;
                         transform.translation.y = world_position.y;
@@ -391,6 +417,12 @@ pub fn connect_blocks(
     }
 
     for (entity, mut transform, mut sprite, line) in line_query.iter_mut() {
+        if !block_list.item.contains_key(&line.start) || !block_list.item.contains_key((&line.end))
+        {
+            commands.entity(entity).despawn_recursive();
+            return;
+        }
+
         let start_entity = block_list.as_ref().item[&line.start].0;
         let end_entity = block_list.as_ref().item[&line.end].0;
         let query = queries.p1();
