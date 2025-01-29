@@ -31,6 +31,7 @@ fn main() {
         .insert_resource(block::BlockDataList::default()) // ブロックのリストを追加
         .insert_resource(block::BlockList::default()) // 出されたブロックのリストを追加
         .insert_resource(block::StartBlock::default()) // スタート位置指定
+        .insert_resource(block::compiler::Environment::default()) // 環境
         .add_systems(Update, drag_system) // ドラッグできるようにする
         .run();
 }
@@ -45,36 +46,32 @@ fn setup(
     // 2Dカメラを追加（四角形を描画するために必要）
     commands.spawn(Camera2d::default());
 
-    const LISTPLACE: usize = 9;
+    const LISTPLACE: usize = 8;
 
     block_data_list.items = vec![
         block::BlockData {
-            text: String::from("add"),
-            block_type: block::BlockType::Function,
+            text: String::from("addi"),
+            block_type: block::BlockType::Identifier,
         },
         block::BlockData {
-            text: String::from("sub"),
-            block_type: block::BlockType::Function,
+            text: String::from("subi"),
+            block_type: block::BlockType::Identifier,
         },
         block::BlockData {
-            text: String::from("mul"),
-            block_type: block::BlockType::Function,
+            text: String::from("muli"),
+            block_type: block::BlockType::Identifier,
         },
         block::BlockData {
-            text: String::from("div"),
-            block_type: block::BlockType::Function,
+            text: String::from("divi"),
+            block_type: block::BlockType::Identifier,
         },
         block::BlockData {
-            text: String::from("mod"),
-            block_type: block::BlockType::Function,
+            text: String::from("modi"),
+            block_type: block::BlockType::Identifier,
         },
         block::BlockData {
-            text: String::from("print"),
-            block_type: block::BlockType::Function,
-        },
-        block::BlockData {
-            text: String::from("println"),
-            block_type: block::BlockType::Function,
+            text: String::from("printi"),
+            block_type: block::BlockType::Identifier,
         },
         block::BlockData {
             text: String::from("define"),
@@ -86,6 +83,10 @@ fn setup(
         },
         block::BlockData {
             text: String::from("list"),
+            block_type: block::BlockType::List,
+        },
+        block::BlockData {
+            text: String::from("identifier_list"),
             block_type: block::BlockType::List,
         },
     ];
@@ -220,6 +221,7 @@ fn run_button_click(
     >,
     block_list: Res<block::BlockList>,
     start_block: Res<block::StartBlock>,
+    mut environment: ResMut<block::compiler::Environment>,
 ) {
     for (interaction, mut color) in &mut interaction_query {
         match *interaction {
@@ -228,11 +230,19 @@ fn run_button_click(
                 println!("Compiling...");
                 let start_point_block = block_list.item[&start_block.start_block].1.clone();
                 match start_point_block.parse(block_list.as_ref()) {
-                    Ok(code) => {
-                        println!("Finished!");
-                    }
+                    Ok(code) => match code.compile(environment.as_mut()) {
+                        Ok((bytes, ret_type)) => {
+                            for b in bytes {
+                                print!("{} ", b);
+                            }
+                            println!("=> {}", ret_type);
+                        }
+                        Err(msg) => {
+                            println!("CompileError:{}", msg);
+                        }
+                    },
                     Err(msg) => {
-                        println!("error:{}", msg);
+                        println!("ParseError:{}", msg);
                     }
                 }
             }
@@ -583,7 +593,6 @@ pub fn spawn_block(
                 String::from(match block.data.block_type {
                     BlockType::Statement => "statement",
                     BlockType::Value => "value",
-                    BlockType::Function => "function",
                     BlockType::List => "list",
                     BlockType::Identifier => "identifier",
                 }) + " : "
@@ -623,7 +632,6 @@ pub fn spawn_block(
                 color: match block.data.block_type {
                     BlockType::Statement => Color::srgb(1.0, 0.3, 0.3),
                     BlockType::Value => Color::srgb(0.1, 0.8, 0.1),
-                    BlockType::Function => Color::srgb(0.3, 0.3, 1.0),
                     BlockType::List => Color::srgb(0.1, 0.1, 0.1),
                     BlockType::Identifier => Color::srgb(0.8, 0.8, 0.8),
                 },

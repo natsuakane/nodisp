@@ -8,7 +8,6 @@ use compiler::*;
 pub enum BlockType {
     Statement,
     Value,
-    Function,
     List,
     Identifier,
 }
@@ -71,19 +70,15 @@ impl Block {
                 for exp in self.inputs.clone() {
                     res.push(block_list.item[&exp].1.parse(block_list)?);
                 }
-                Ok(AstNode::Function(res))
+                Ok(AstNode::Statement(res))
             }
-            BlockType::Value => match self.data.text.parse::<f64>() {
-                Ok(num) => Ok(AstNode::ValueNum(num)),
-                Err(_) => Ok(AstNode::ValueStr(self.data.text.clone())),
+            BlockType::Value => match self.data.text.parse::<i64>() {
+                Ok(num) => Ok(AstNode::ValueInteger(num)),
+                Err(_) => match self.data.text.parse::<f64>() {
+                    Ok(num) => Ok(AstNode::ValueFloat(num)),
+                    Err(_) => Ok(AstNode::ValueStr(self.data.text.clone())),
+                },
             },
-            BlockType::Function => {
-                let mut res: Vec<AstNode> = vec![];
-                for exp in self.inputs.clone() {
-                    res.push(block_list.item[&exp].1.parse(block_list)?);
-                }
-                Ok(AstNode::Function(res))
-            }
             BlockType::List => {
                 let mut res: Vec<AstNode> = vec![];
                 for exp in self.inputs.clone() {
@@ -92,7 +87,18 @@ impl Block {
                 Ok(AstNode::List(res))
             }
             BlockType::Identifier => {
-                return Ok(AstNode::Identifier(self.data.text.clone()));
+                if self.inputs.len() != 0 {
+                    let mut args: Vec<AstNode> = vec![];
+                    for exp in self.inputs.clone() {
+                        args.push(block_list.item[&exp].1.parse(block_list)?);
+                    }
+                    Ok(AstNode::Function {
+                        func: self.data.text.clone(),
+                        args,
+                    })
+                } else {
+                    Ok(AstNode::Identifier(self.data.text.clone()))
+                }
             }
         }
     }
