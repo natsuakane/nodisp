@@ -66,11 +66,14 @@ impl Block {
     pub fn parse(&self, block_list: &BlockList) -> Result<AstNode, String> {
         match self.data.block_type {
             BlockType::Statement => {
-                let mut res: Vec<AstNode> = vec![];
+                let mut options: Vec<AstNode> = vec![];
                 for exp in self.inputs.clone() {
-                    res.push(block_list.item[&exp].1.parse(block_list)?);
+                    options.push(block_list.item[&exp].1.parse(block_list)?);
                 }
-                Ok(AstNode::Statement(res))
+                Ok(AstNode::Statement {
+                    statement: self.data.text.clone(),
+                    options,
+                })
             }
             BlockType::Value => match self.data.text.parse::<i64>() {
                 Ok(num) => Ok(AstNode::ValueInteger(num)),
