@@ -74,7 +74,7 @@ fn setup(
             block_type: block::BlockType::Identifier,
         },
         block::BlockData {
-            text: String::from("define"),
+            text: String::from("set"),
             block_type: block::BlockType::Statement,
         },
         block::BlockData {
@@ -320,7 +320,7 @@ fn add_value(
                 }
                 block_data_list.items.push(block::BlockData {
                     text: event.value.clone(),
-                    block_type: block::BlockType::Value,
+                    block_type: block::BlockType::Identifier,
                 });
             }
         };

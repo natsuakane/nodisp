@@ -87,7 +87,10 @@ impl Block {
                 for exp in self.inputs.clone() {
                     res.push(block_list.item[&exp].1.parse(block_list)?);
                 }
-                Ok(AstNode::List(res))
+                Ok(AstNode::List {
+                    name: self.data.text.clone(),
+                    codes: res,
+                })
             }
             BlockType::Identifier => {
                 if self.inputs.len() != 0 {

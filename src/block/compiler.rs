@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub enum AstNode {
     Statement {
         statement: String,
@@ -13,7 +14,10 @@ pub enum AstNode {
         func: String,
         args: Vec<AstNode>,
     },
-    List(Vec<AstNode>),
+    List {
+        name: String,
+        codes: Vec<AstNode>,
+    },
     Identifier(String),
 }
 
@@ -24,6 +28,10 @@ pub enum Opecodes {
     PopRP,
     ClearR,
     CopyR,
+    PushS32,
+    PushS64,
+    PopS32,
+    PopS64,
     AddI,
     SubI,
     MulI,
@@ -99,7 +107,7 @@ impl AstNode {
                         expected_type, a.1
                     ))
                 } else {
-                    let b = args[0].compile(environment)?;
+                    let b = args[1].compile(environment)?;
                     if b.1 != expected_type {
                         Err(format!(
                             "expected type {}, but found type {}.",
@@ -108,6 +116,27 @@ impl AstNode {
                     } else {
                         Ok((a, b))
                     }
+                }
+            }
+        }
+        fn get_identifier_list(identifier_list: AstNode) -> Result<Vec<String>, String> {
+            match identifier_list {
+                AstNode::List { name, codes } => {
+                    if name != "identifier_list".to_string() {
+                        return Err(format!("expected type was 'identifier'."));
+                    }
+                    let mut res: Vec<String> = vec![];
+                    for identifier in codes {
+                        if let AstNode::Identifier(id) = identifier {
+                            res.push(id);
+                        } else {
+                            return Err(format!("expected type was 'identifier'."));
+                        }
+                    }
+                    Ok(res)
+                }
+                _ => {
+                    return Err(format!("expected block was 'identifier_list'"));
                 }
             }
         }
@@ -137,7 +166,7 @@ impl AstNode {
                             add_u8(&mut res, Opecodes::PopRP as u8);
                             add_u64(&mut res, var.0);
                         }
-                        _ => return Err(format!("expected type 'identifier'.")),
+                        _ => return Err(format!("expected type was 'identifier'.")),
                     }
                 }
                 _ => return Err(format!("Unknown statement '{}'.", statement)),
@@ -160,16 +189,28 @@ impl AstNode {
                 }
                 return_type = "string".to_string();
             }
-            AstNode::List(vec) => {
-                for (i, code) in vec.iter().enumerate() {
-                    let (bytes, ret_type) = code.compile(environment)?;
-                    res.extend(bytes);
-                    return_type = ret_type;
-                    if i != vec.len() - 1 {
-                        add_u8(&mut res, Opecodes::ClearR as u8);
+            AstNode::List { name, codes } => match name.as_str() {
+                "list" => {
+                    let local_variables = get_identifier_list(codes[0].clone())?;
+                    let mut hash: HashMap<String, (u64, String)> = HashMap::default();
+                    for (i, var) in local_variables.iter().enumerate() {
+                        hash.insert(var.to_string(), (i as u64 * 8, "integer".to_string()));
+                        add_u8(&mut res, Opecodes::PushS64 as u8);
+                        add_u64(&mut res, 0);
+                    }
+                    environment.stack.push(hash);
+
+                    for (i, code) in codes[1..].iter().enumerate() {
+                        let (bytes, ret_type) = code.compile(environment)?;
+                        res.extend(bytes);
+                        return_type = ret_type;
+                        if i != codes.len() - 1 {
+                            add_u8(&mut res, Opecodes::ClearR as u8);
+                        }
                     }
                 }
-            }
+                _ => return Err(format!("unknow list node '{}'.", name)),
+            },
             AstNode::Identifier(str) => {
                 let var = environment.find(str.clone())?;
                 add_u8(&mut res, Opecodes::PushRP as u8);
