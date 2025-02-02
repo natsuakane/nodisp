@@ -55,6 +55,15 @@ impl Environment {
         }
         Err(format!("variable '{}' is not defined.", name))
     }
+    pub fn set_type(&mut self, name: String, type_name: String) -> Result<(), String> {
+        for i in (0..self.stack.len()).rev() {
+            if let Some(res) = self.stack[i].get_mut(&name) {
+                res.1 = type_name.clone();
+                return Ok(());
+            }
+        }
+        Err(format!("variable '{}' is not defined.", name))
+    }
 }
 
 impl AstNode {
@@ -155,14 +164,16 @@ impl AstNode {
                             let var = environment.find(idf.clone())?;
                             let exp = &options[1].compile(environment)?;
                             res.extend(exp.0.clone());
+                            return_type = exp.1.clone();
 
-                            if var.1 != exp.1 {
+                            if var.1 != "".to_string() && var.1 != exp.1 {
                                 return Err(format!(
                                     "expected type '{}', but found type '{}'.",
                                     var.1, exp.1
                                 ));
                             }
 
+                            environment.set_type(idf.clone(), exp.1.clone())?;
                             add_u8(&mut res, Opecodes::PopRP as u8);
                             add_u64(&mut res, var.0);
                         }
@@ -191,20 +202,30 @@ impl AstNode {
             }
             AstNode::List { name, codes } => match name.as_str() {
                 "list" => {
-                    let local_variables = get_identifier_list(codes[0].clone())?;
-                    let mut hash: HashMap<String, (u64, String)> = HashMap::default();
-                    for (i, var) in local_variables.iter().enumerate() {
-                        hash.insert(var.to_string(), (i as u64 * 8, "integer".to_string()));
-                        add_u8(&mut res, Opecodes::PushS64 as u8);
-                        add_u64(&mut res, 0);
+                    if codes.len() == 0 {
+                        return Ok((res, return_type));
                     }
-                    environment.stack.push(hash);
 
-                    for (i, code) in codes[1..].iter().enumerate() {
+                    let mut start_compile_point = 0;
+                    match get_identifier_list(codes[0].clone()) {
+                        Ok(local_variables) => {
+                            let mut hash: HashMap<String, (u64, String)> = HashMap::default();
+                            for (i, var) in local_variables.iter().enumerate() {
+                                hash.insert(var.to_string(), (i as u64 * 8, "".to_string()));
+                                add_u8(&mut res, Opecodes::PushS64 as u8);
+                                add_u64(&mut res, 0);
+                            }
+                            environment.stack.push(hash);
+                            start_compile_point = 1;
+                        }
+                        Err(_) => {}
+                    }
+
+                    for (i, code) in codes[start_compile_point..].iter().enumerate() {
                         let (bytes, ret_type) = code.compile(environment)?;
                         res.extend(bytes);
                         return_type = ret_type;
-                        if i != codes.len() - 1 {
+                        if i != codes.len() - start_compile_point - 1 {
                             add_u8(&mut res, Opecodes::ClearR as u8);
                         }
                     }
@@ -215,7 +236,8 @@ impl AstNode {
                 let var = environment.find(str.clone())?;
                 add_u8(&mut res, Opecodes::PushRP as u8);
                 add_u64(&mut res, var.0);
-                return_type = var.1;
+                return_type = var.1.clone();
+                println!("var.1:{}", var.1.clone());
             }
             AstNode::Function { func, args } => match func.as_str() {
                 "addi" => {
