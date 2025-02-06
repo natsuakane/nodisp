@@ -231,11 +231,17 @@ fn run_button_click(
                 let start_point_block = block_list.item[&start_block.start_block].1.clone();
                 match start_point_block.parse(block_list.as_ref()) {
                     Ok(code) => match code.compile(environment.as_mut()) {
-                        Ok((bytes, ret_type)) => {
-                            for b in bytes {
-                                print!("{} ", b);
+                        Ok((mut bytes, ret_type)) => {
+                            bytes.push(block::compiler::Opecodes::End as u8);
+                            for b in bytes.clone() {
+                                print!("{:#X} ", b);
                             }
                             println!("=> {}", ret_type);
+
+                            match block::compiler::execute_vm(bytes) {
+                                Ok(()) => {}
+                                Err(msg) => println!("ExecutionError:{}", msg),
+                            }
                         }
                         Err(msg) => {
                             println!("CompileError:{}", msg);
