@@ -193,6 +193,9 @@ fn spawn_value_fields(mut commands: Commands) {
 #[derive(Component)]
 struct RunButton;
 
+#[derive(Component)]
+struct ResultText;
+
 fn add_run_button(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         Button,
@@ -215,12 +218,15 @@ fn add_run_button(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn run_button_click(
+    mut commands: Commands,
     mut interaction_query: Query<
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<RunButton>),
     >,
+    mut result_texts: Query<Entity, With<ResultText>>,
     block_list: Res<block::BlockList>,
     start_block: Res<block::StartBlock>,
+    asset_server: Res<AssetServer>,
     mut environment: ResMut<block::compiler::Environment>,
 ) {
     for (interaction, mut color) in &mut interaction_query {
@@ -229,7 +235,7 @@ fn run_button_click(
                 *color = Color::srgba(0.8, 0.8, 0.8, 0.4).into();
                 println!("Compiling...");
                 let start_point_block = block_list.item[&start_block.start_block].1.clone();
-                match start_point_block.parse(block_list.as_ref()) {
+                let result = match start_point_block.parse(block_list.as_ref()) {
                     Ok(code) => match code.compile(environment.as_mut()) {
                         Ok((mut bytes, ret_type)) => {
                             bytes.push(block::compiler::Opecodes::End as u8);
@@ -239,18 +245,39 @@ fn run_button_click(
                             println!("=> {}", ret_type);
 
                             match block::compiler::execute_vm(bytes) {
-                                Ok(()) => {}
-                                Err(msg) => println!("ExecutionError:{}", msg),
+                                Ok(res) => res,
+                                Err(msg) => msg,
                             }
                         }
                         Err(msg) => {
-                            println!("CompileError:{}", msg);
+                            format!("CompileError:{}", msg)
                         }
                     },
                     Err(msg) => {
-                        println!("ParseError:{}", msg);
+                        format!("ParseError:{}", msg)
                     }
+                };
+
+                for text in result_texts.iter_mut() {
+                    commands.entity(text).despawn_recursive();
                 }
+                commands.spawn((
+                    Text::new(result.clone()),
+                    TextFont {
+                        font: asset_server.load("fonts/FiraCode-Medium.ttf"),
+                        font_size: 20.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                    Node {
+                        top: Val::Px(100.0),
+                        right: Val::Percent(23.0),
+                        position_type: PositionType::Absolute,
+                        border: UiRect::all(Val::Px(5.0)),
+                        ..Default::default()
+                    },
+                    ResultText,
+                ));
             }
             Interaction::Hovered => {
                 *color = Color::srgba(0.8, 0.8, 0.8, 0.2).into();

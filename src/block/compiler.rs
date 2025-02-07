@@ -310,6 +310,8 @@ impl AstNode {
                     if a.1 != "integer".to_string() {
                         return Err(format!("expected type integer, but found type {}.", a.1));
                     }
+
+                    res.extend(a.0);
                     add_u8(&mut res, Opecodes::OutputI as u8);
                     return_type = "integer".to_string();
                 }
@@ -371,12 +373,13 @@ impl Stack {
     }
 }
 
-pub fn execute_vm(code: Vec<u8>) -> Result<(), String> {
+pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
     let mut i: u32 = 0;
     let mut stack: Stack = Stack {
         sp: 0,
         stack: [0; 100000],
     };
+    let mut res = "".to_string();
     loop {
         if let Some(&byte) = code.get(i as usize) {
             if let Some(opcode) = (byte as u8).try_into().ok() {
@@ -451,11 +454,12 @@ pub fn execute_vm(code: Vec<u8>) -> Result<(), String> {
                     Opecodes::OutputI => {
                         let value = stack.pop64();
                         println!("{}", i64::from_le_bytes(value));
+                        res += &format!("{}", i64::from_le_bytes(value));
                         stack.push64(value);
                         i += 1;
                     }
                     Opecodes::End => {
-                        return Ok(());
+                        return Ok(res);
                     }
                 }
             } else {
