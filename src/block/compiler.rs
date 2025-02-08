@@ -22,10 +22,6 @@ pub enum AstNode {
 }
 
 pub enum Opecodes {
-    //PushR,
-    //PopR,
-    //PushRP,
-    //PopRP,
     CopySP,      // スタックの指定の場所から８バイトをコピー
     OverWriteSP, // スタックの指定の場所で８バイトを書き換え 先に値をスタックに積んでおく v OverWriteSP p
     SaveR,
@@ -39,6 +35,7 @@ pub enum Opecodes {
     DivI,
     ModI,
     OutputI,
+    Jump,
     End,
 }
 
@@ -60,7 +57,8 @@ impl TryFrom<u8> for Opecodes {
             0x0A => Ok(Opecodes::DivI),
             0x0B => Ok(Opecodes::ModI),
             0x0C => Ok(Opecodes::OutputI),
-            0x0D => Ok(Opecodes::End),
+            0x0D => Ok(Opecodes::Jump),
+            0x0E => Ok(Opecodes::End),
             _ => Err(()), // 無効な値はエラーを返す
         }
     }
@@ -68,11 +66,11 @@ impl TryFrom<u8> for Opecodes {
 
 #[derive(Resource, Default)]
 pub struct Environment {
-    pub stack: Vec<HashMap<String, (u64, String)>>,
+    pub stack: Vec<HashMap<String, (i64, String)>>,
 }
 
 impl Environment {
-    pub fn find(&self, name: String) -> Result<(u64, String), String> {
+    pub fn find(&self, name: String) -> Result<(i64, String), String> {
         for i in (0..self.stack.len()).rev() {
             if let Some(res) = self.stack[i].get(&name) {
                 return Ok(res.clone());
@@ -93,16 +91,24 @@ impl Environment {
 
 impl AstNode {
     pub fn compile(&self, environment: &mut Environment) -> Result<(Vec<u8>, String), String> {
+        static mut CURRENT_POS: u32 = 0;
+
         let mut res: Vec<u8> = vec![];
         let mut return_type: String = "".to_string();
 
         fn add_u8(vec: &mut Vec<u8>, n: u8) {
             vec.push(n);
+            unsafe {
+                CURRENT_POS += 1;
+            }
         }
         fn add_u32(vec: &mut Vec<u8>, n: u32) {
             let nvec: [u8; 4] = n.to_le_bytes();
             for b in nvec {
                 vec.push(b);
+            }
+            unsafe {
+                CURRENT_POS += 4;
             }
         }
         fn add_u64(vec: &mut Vec<u8>, n: u64) {
@@ -110,17 +116,26 @@ impl AstNode {
             for b in nvec {
                 vec.push(b);
             }
+            unsafe {
+                CURRENT_POS += 8;
+            }
         }
         fn add_i64(vec: &mut Vec<u8>, n: i64) {
             let nvec: [u8; 8] = n.to_le_bytes();
             for b in nvec {
                 vec.push(b);
             }
+            unsafe {
+                CURRENT_POS += 8;
+            }
         }
         fn add_f64(vec: &mut Vec<u8>, n: f64) {
             let nvec: [u8; 8] = n.to_le_bytes();
             for b in nvec {
                 vec.push(b);
+            }
+            unsafe {
+                CURRENT_POS += 8;
             }
         }
         fn get_binop_args(
@@ -199,12 +214,73 @@ impl AstNode {
 
                             environment.set_type(idf.clone(), exp.1.clone())?;
                             add_u8(&mut res, Opecodes::OverWriteSP as u8);
-                            add_u64(&mut res, var.0);
+                            add_i64(&mut res, var.0);
                         }
                         _ => return Err(format!("expected type was 'identifier'.")),
                     }
                 }
-                _ => return Err(format!("Unknown statement '{}'.", statement)),
+                "lambda" => {
+                    if options.len() == 0 {
+                        return Err("statement 'lambda' needs argments list.".to_string());
+                    }
+                    if options.len() > 2 {
+                        return Err(format!(
+                            "statement 'lambda' takes 1 options but {} options was supplied.",
+                            options.len()
+                        ));
+                    }
+
+                    let mut compile_point = 0;
+                    let mut is_stack_pushed = false;
+                    match get_identifier_list(options[0].clone()) {
+                        Ok(argments) => {
+                            let mut hash: HashMap<String, (i64, String)> = HashMap::default();
+                            for (i, var) in argments.iter().enumerate() {
+                                hash.insert(var.to_string(), (-(i as i64 + 1) * 8, "".to_string()));
+                            }
+                            environment.stack.push(hash);
+                            is_stack_pushed = true;
+                            compile_point = 1;
+
+                            if options.len() == 1 {
+                                return Err("statement 'lambda' needs program.".to_string());
+                            }
+                        }
+                        Err(_) => {}
+                    }
+
+                    unsafe {
+                        add_u8(&mut res, Opecodes::PushS64 as u8);
+
+                        let jump_pos = res.len();
+                        let jump_pos_as_real = CURRENT_POS;
+                        add_i64(&mut res, 0);
+
+                        add_u8(&mut res, Opecodes::Jump as u8);
+
+                        let (bytes, ret_type) = options[compile_point].compile(environment)?;
+                        res.extend(bytes);
+                        return_type = ret_type;
+
+                        if is_stack_pushed {
+                            if let Some(variables) = environment.stack.last() {
+                                for _ in 0..variables.len() {
+                                    add_u8(&mut res, Opecodes::PopS64 as u8);
+                                }
+                            }
+                            environment.stack.pop();
+                        }
+
+                        let current_pos_bytes: [u8; 8] = (CURRENT_POS as i64).to_le_bytes();
+                        for i in 0..8 {
+                            res[jump_pos as usize + i] = current_pos_bytes[i];
+                        }
+
+                        add_u8(&mut res, Opecodes::PushS64 as u8);
+                        add_i64(&mut res, (jump_pos_as_real + 8) as i64);
+                    }
+                }
+                _ => return Err(format!("unknown statement '{}'.", statement)),
             },
             AstNode::ValueInteger(num) => {
                 add_u8(&mut res, Opecodes::PushS64 as u8);
@@ -231,15 +307,17 @@ impl AstNode {
                     }
 
                     let mut start_compile_point = 0;
+                    let mut is_stack_pushed = false;
                     match get_identifier_list(codes[0].clone()) {
                         Ok(local_variables) => {
-                            let mut hash: HashMap<String, (u64, String)> = HashMap::default();
+                            let mut hash: HashMap<String, (i64, String)> = HashMap::default();
                             for (i, var) in local_variables.iter().enumerate() {
-                                hash.insert(var.to_string(), (i as u64 * 8, "".to_string()));
+                                hash.insert(var.to_string(), (i as i64 * 8, "".to_string()));
                                 add_u8(&mut res, Opecodes::PushS64 as u8);
                                 add_u64(&mut res, 0);
                             }
                             environment.stack.push(hash);
+                            is_stack_pushed = true;
                             start_compile_point = 1;
                         }
                         Err(_) => {}
@@ -249,9 +327,15 @@ impl AstNode {
                         let (bytes, ret_type) = code.compile(environment)?;
                         res.extend(bytes);
                         return_type = ret_type;
-                        //if i != codes.len() - start_compile_point - 1 {
-                        //    add_u8(&mut res, Opecodes::ClearR as u8);
-                        //}
+                    }
+
+                    if is_stack_pushed {
+                        if let Some(variables) = environment.stack.last() {
+                            for _ in 0..variables.len() {
+                                add_u8(&mut res, Opecodes::PopS64 as u8);
+                            }
+                        }
+                        environment.stack.pop();
                     }
                 }
                 _ => return Err(format!("unknow list node '{}'.", name)),
@@ -259,7 +343,7 @@ impl AstNode {
             AstNode::Identifier(str) => {
                 let var = environment.find(str.clone())?;
                 add_u8(&mut res, Opecodes::CopySP as u8);
-                add_u64(&mut res, var.0);
+                add_i64(&mut res, var.0);
                 return_type = var.1.clone();
                 println!("var.1:{}", var.1.clone());
             }
@@ -359,16 +443,16 @@ impl Stack {
         self.sp -= 8;
         res
     }
-    pub fn get64(&self, point: usize) -> [u8; 8] {
+    pub fn get64(&self, point: i64) -> [u8; 8] {
         let mut res: [u8; 8] = [0; 8];
         for i in 0..8 {
-            res[i] = self.stack[point + i];
+            res[i] = self.stack[point as usize + i];
         }
         res
     }
-    pub fn set64(&mut self, value: [u8; 8], point: usize) {
+    pub fn set64(&mut self, value: [u8; 8], point: i64) {
         for i in 0..8 {
-            self.stack[point + i] = value[i];
+            self.stack[point as usize + i] = value[i];
         }
     }
 }
@@ -379,6 +463,7 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
         sp: 0,
         stack: [0; 100000],
     };
+    let mut fp: i64 = 0;
     let mut res = "".to_string();
     loop {
         if let Some(&byte) = code.get(i as usize) {
@@ -387,14 +472,14 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                     Opecodes::CopySP => {
                         let slice = &code[(i as usize + 1)..(i as usize + 9)]; // スライスを取得
                         let array: [u8; 8] = slice.try_into().unwrap(); // [u8; 8] に変換
-                        stack.push64(stack.get64(usize::from_le_bytes(array)));
+                        stack.push64(stack.get64(fp + i64::from_le_bytes(array)));
                         i += 9;
                     }
                     Opecodes::OverWriteSP => {
                         let value = stack.pop64();
                         let slice = &code[(i as usize + 1)..(i as usize + 9)]; // スライスを取得
                         let array: [u8; 8] = slice.try_into().unwrap(); // [u8; 8] に変換
-                        stack.set64(value, usize::from_le_bytes(array));
+                        stack.set64(value, fp + i64::from_le_bytes(array));
                         stack.push64(value);
                         i += 9;
                     }
@@ -403,8 +488,6 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         let slice = &code[(i as usize + 1)..(i as usize + 9)]; // スライスを取得
                         let array: [u8; 8] = slice.try_into().unwrap(); // [u8; 8] に変換
                         stack.push64(array);
-
-                        stack.print();
 
                         i += 9;
                     }
@@ -457,6 +540,12 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         res += &format!("{}", i64::from_le_bytes(value));
                         stack.push64(value);
                         i += 1;
+                    }
+                    Opecodes::Jump => {
+                        let pos = stack.pop64();
+                        let pos4 = [pos[0], pos[1], pos[2], pos[3]];
+                        i = u32::from_le_bytes(pos4);
+                        println!("{}", i);
                     }
                     Opecodes::End => {
                         return Ok(res);
