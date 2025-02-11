@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{color::palettes::css::PERU, prelude::*};
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -36,6 +36,11 @@ pub enum Opecodes {
     ModI,
     OutputI,
     Jump,
+    SetFP,
+    SetRET,
+    ExportFP,
+    PushRET,
+    IfNotJump,
     End,
 }
 
@@ -58,7 +63,12 @@ impl TryFrom<u8> for Opecodes {
             0x0B => Ok(Opecodes::ModI),
             0x0C => Ok(Opecodes::OutputI),
             0x0D => Ok(Opecodes::Jump),
-            0x0E => Ok(Opecodes::End),
+            0x0E => Ok(Opecodes::SetFP),
+            0x0F => Ok(Opecodes::SetRET),
+            0x10 => Ok(Opecodes::ExportFP),
+            0x11 => Ok(Opecodes::PushRET),
+            0x12 => Ok(Opecodes::IfNotJump),
+            0x13 => Ok(Opecodes::End),
             _ => Err(()), // 無効な値はエラーを返す
         }
     }
@@ -236,7 +246,10 @@ impl AstNode {
                         Ok(argments) => {
                             let mut hash: HashMap<String, (i64, String)> = HashMap::default();
                             for (i, var) in argments.iter().enumerate() {
-                                hash.insert(var.to_string(), (-(i as i64 + 1) * 8, "".to_string()));
+                                hash.insert(
+                                    var.to_string(),
+                                    (-(i as i64 + 1) * 8, "integer".to_string()),
+                                );
                             }
                             environment.stack.push(hash);
                             is_stack_pushed = true;
@@ -251,17 +264,20 @@ impl AstNode {
 
                     unsafe {
                         add_u8(&mut res, Opecodes::PushS64 as u8);
-
                         let jump_pos = res.len();
                         let jump_pos_as_real = CURRENT_POS;
                         add_i64(&mut res, 0);
 
                         add_u8(&mut res, Opecodes::Jump as u8);
 
+                        add_u8(&mut res, Opecodes::SetFP as u8); // FP設定
+
                         let (bytes, ret_type) = options[compile_point].compile(environment)?;
                         res.extend(bytes);
                         return_type = ret_type;
 
+                        add_u8(&mut res, Opecodes::SetRET as u8); // リターンする値を設定
+                        add_u8(&mut res, Opecodes::ExportFP as u8); // 引数変数削除のため
                         if is_stack_pushed {
                             if let Some(variables) = environment.stack.last() {
                                 for _ in 0..variables.len() {
@@ -271,13 +287,55 @@ impl AstNode {
                             environment.stack.pop();
                         }
 
+                        add_u8(&mut res, Opecodes::Jump as u8); // もとの位置に戻る
+
                         let current_pos_bytes: [u8; 8] = (CURRENT_POS as i64).to_le_bytes();
                         for i in 0..8 {
                             res[jump_pos as usize + i] = current_pos_bytes[i];
                         }
 
                         add_u8(&mut res, Opecodes::PushS64 as u8);
-                        add_i64(&mut res, (jump_pos_as_real + 8) as i64);
+                        add_i64(&mut res, (jump_pos_as_real + 9) as i64);
+                    }
+                }
+                "if" => {
+                    if options.len() != 3 {
+                        return Err("statement 'if' needs three options.".to_string());
+                    }
+
+                    let exp = options[0].compile(environment)?;
+                    let block1 = options[1].compile(environment)?;
+
+                    res.extend(exp.0);
+                    add_u8(&mut res, Opecodes::PushS64 as u8);
+                    let jump_pos_to_else = res.len();
+                    add_i64(&mut res, 0);
+                    add_u8(&mut res, Opecodes::IfNotJump as u8);
+
+                    res.extend(block1.0);
+
+                    add_u8(&mut res, Opecodes::PushS64 as u8);
+                    let jump_pos_outside = res.len();
+                    add_i64(&mut res, 0);
+                    add_u8(&mut res, Opecodes::Jump as u8);
+
+                    unsafe {
+                        let bytes = (CURRENT_POS as i64).to_le_bytes();
+                        for i in 0..8 {
+                            res[jump_pos_to_else + i] = bytes[i];
+                        }
+
+                        let block2 = options[2].compile(environment)?;
+                        res.extend(block2.0);
+
+                        let bytes = (CURRENT_POS as i64).to_le_bytes();
+                        for i in 0..8 {
+                            res[jump_pos_outside + i] = bytes[i];
+                        }
+
+                        if (block1.1 == block2.1) {
+                            return_type = block1.1.clone();
+                        }
                     }
                 }
                 _ => return Err(format!("unknown statement '{}'.", statement)),
@@ -345,7 +403,6 @@ impl AstNode {
                 add_u8(&mut res, Opecodes::CopySP as u8);
                 add_i64(&mut res, var.0);
                 return_type = var.1.clone();
-                println!("var.1:{}", var.1.clone());
             }
             AstNode::Function { func, args } => match func.as_str() {
                 "addi" => {
@@ -399,7 +456,30 @@ impl AstNode {
                     add_u8(&mut res, Opecodes::OutputI as u8);
                     return_type = "integer".to_string();
                 }
-                _ => {}
+                _ => unsafe {
+                    add_u8(&mut res, Opecodes::PushS64 as u8);
+                    let jump_pos = res.len(); // 戻る場所を指定
+                    add_u64(&mut res, 0);
+
+                    for arg in args {
+                        let a = arg.compile(environment)?;
+                        res.extend(a.0);
+                    }
+
+                    let func_pos = environment.find(func.clone())?;
+                    add_u8(&mut res, Opecodes::CopySP as u8);
+                    add_i64(&mut res, func_pos.0);
+                    add_u8(&mut res, Opecodes::Jump as u8);
+
+                    return_type = func_pos.1.clone();
+
+                    let return_pos_bytes: [u8; 8] = (CURRENT_POS as i64).to_le_bytes();
+                    for i in 0..8 {
+                        res[jump_pos + i] = return_pos_bytes[i];
+                    }
+
+                    add_u8(&mut res, Opecodes::PushRET as u8); // 戻り値をスタックにプッシュ
+                },
             },
         }
 
@@ -464,22 +544,24 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
         stack: [0; 100000],
     };
     let mut fp: i64 = 0;
+    let mut ret: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
     let mut res = "".to_string();
     loop {
+        print!("{}=>", i);
         if let Some(&byte) = code.get(i as usize) {
             if let Some(opcode) = (byte as u8).try_into().ok() {
                 match opcode {
                     Opecodes::CopySP => {
                         let slice = &code[(i as usize + 1)..(i as usize + 9)]; // スライスを取得
                         let array: [u8; 8] = slice.try_into().unwrap(); // [u8; 8] に変換
-                        stack.push64(stack.get64(fp + i64::from_le_bytes(array)));
+                        stack.push64(stack.get64(i64::from_le_bytes(array)));
                         i += 9;
                     }
                     Opecodes::OverWriteSP => {
                         let value = stack.pop64();
                         let slice = &code[(i as usize + 1)..(i as usize + 9)]; // スライスを取得
                         let array: [u8; 8] = slice.try_into().unwrap(); // [u8; 8] に変換
-                        stack.set64(value, fp + i64::from_le_bytes(array));
+                        stack.set64(value, i64::from_le_bytes(array));
                         stack.push64(value);
                         i += 9;
                     }
@@ -492,7 +574,10 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         i += 9;
                     }
                     Opecodes::PopS32 => {}
-                    Opecodes::PopS64 => {}
+                    Opecodes::PopS64 => {
+                        stack.pop64();
+                        i += 1;
+                    }
                     Opecodes::SaveR => {}
                     Opecodes::AddI => {
                         let value1 = stack.pop64();
@@ -546,6 +631,35 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         let pos4 = [pos[0], pos[1], pos[2], pos[3]];
                         i = u32::from_le_bytes(pos4);
                         println!("{}", i);
+                    }
+                    Opecodes::SetFP => {
+                        fp = stack.sp as i64;
+                        i += 1;
+                    }
+                    Opecodes::SetRET => {
+                        let r = stack.pop64();
+                        for i in 0..8 {
+                            ret[i] = r[i];
+                        }
+                        i += 1;
+                    }
+                    Opecodes::ExportFP => {
+                        stack.sp = fp as usize;
+                        i += 1;
+                    }
+                    Opecodes::PushRET => {
+                        stack.push64(ret);
+                        i += 1;
+                    }
+                    Opecodes::IfNotJump => {
+                        let pos = stack.pop64();
+                        let r = stack.pop64();
+                        let pos4 = [pos[0], pos[1], pos[2], pos[3]];
+                        if i64::from_le_bytes(r) == 0 {
+                            i = u32::from_le_bytes(pos4);
+                        } else {
+                            i += 1;
+                        }
                     }
                     Opecodes::End => {
                         return Ok(res);

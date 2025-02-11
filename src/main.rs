@@ -89,6 +89,10 @@ fn setup(
             text: String::from("identifier_list"),
             block_type: block::BlockType::List,
         },
+        block::BlockData {
+            text: String::from("if"),
+            block_type: block::BlockType::Statement,
+        },
     ];
 
     let id = spawn_block(
@@ -234,6 +238,7 @@ fn run_button_click(
             Interaction::Pressed => {
                 *color = Color::srgba(0.8, 0.8, 0.8, 0.4).into();
                 println!("Compiling...");
+                environment.stack.clear();
                 let start_point_block = block_list.item[&start_block.start_block].1.clone();
                 let result = match start_point_block.parse(block_list.as_ref()) {
                     Ok(code) => match code.compile(environment.as_mut()) {
