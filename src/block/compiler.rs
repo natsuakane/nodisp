@@ -99,6 +99,13 @@ impl Environment {
     }
 }
 
+fn check_type(t1: String, t2: String) -> bool {
+    if t1 == "".to_string() {
+        return true;
+    }
+    t1 == t2
+}
+
 impl AstNode {
     pub fn compile(&self, environment: &mut Environment) -> Result<(Vec<u8>, String), String> {
         static mut CURRENT_POS: u32 = 0;
@@ -160,14 +167,14 @@ impl AstNode {
                 ))
             } else {
                 let a = args[0].compile(environment)?;
-                if a.1 != expected_type {
+                if !check_type(a.1.clone(), expected_type.clone()) {
                     Err(format!(
                         "expected type {}, but found type {}.",
                         expected_type, a.1
                     ))
                 } else {
                     let b = args[1].compile(environment)?;
-                    if b.1 != expected_type {
+                    if !check_type(b.1.clone(), expected_type.clone()) {
                         Err(format!(
                             "expected type {}, but found type {}.",
                             expected_type, b.1
@@ -246,10 +253,7 @@ impl AstNode {
                         Ok(argments) => {
                             let mut hash: HashMap<String, (i64, String)> = HashMap::default();
                             for (i, var) in argments.iter().enumerate() {
-                                hash.insert(
-                                    var.to_string(),
-                                    (-(i as i64 + 1) * 8, "integer".to_string()),
-                                );
+                                hash.insert(var.to_string(), (-(i as i64 + 1) * 8, "".to_string()));
                             }
                             environment.stack.push(hash);
                             is_stack_pushed = true;
@@ -333,7 +337,7 @@ impl AstNode {
                             res[jump_pos_outside + i] = bytes[i];
                         }
 
-                        if (block1.1 == block2.1) {
+                        if block1.1 == block2.1 {
                             return_type = block1.1.clone();
                         }
                     }
@@ -448,7 +452,7 @@ impl AstNode {
                         ));
                     }
                     let a = args[0].compile(environment)?;
-                    if a.1 != "integer".to_string() {
+                    if !check_type(a.1.clone(), "integer".to_string()) {
                         return Err(format!("expected type integer, but found type {}.", a.1));
                     }
 
@@ -554,14 +558,14 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                     Opecodes::CopySP => {
                         let slice = &code[(i as usize + 1)..(i as usize + 9)]; // スライスを取得
                         let array: [u8; 8] = slice.try_into().unwrap(); // [u8; 8] に変換
-                        stack.push64(stack.get64(i64::from_le_bytes(array)));
+                        stack.push64(stack.get64(fp + i64::from_le_bytes(array)));
                         i += 9;
                     }
                     Opecodes::OverWriteSP => {
                         let value = stack.pop64();
                         let slice = &code[(i as usize + 1)..(i as usize + 9)]; // スライスを取得
                         let array: [u8; 8] = slice.try_into().unwrap(); // [u8; 8] に変換
-                        stack.set64(value, i64::from_le_bytes(array));
+                        stack.set64(value, fp + i64::from_le_bytes(array));
                         stack.push64(value);
                         i += 9;
                     }

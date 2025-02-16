@@ -244,8 +244,8 @@ fn run_button_click(
                     Ok(code) => match code.compile(environment.as_mut()) {
                         Ok((mut bytes, ret_type)) => {
                             bytes.push(block::compiler::Opecodes::End as u8);
-                            for b in bytes.clone() {
-                                print!("{:#X} ", b);
+                            for i in 0..bytes.len() {
+                                print!("{}:{:#X} ", i, bytes[i]);
                             }
                             println!("=> {}", ret_type);
 
