@@ -38,9 +38,11 @@ pub enum Opecodes {
     Jump,
     SetFP,
     SetRET,
-    ExportFP,
+    ResetFP,
     PushRET,
     IfNotJump,
+    ExportFP,
+    PushFP,
     End,
 }
 
@@ -65,10 +67,12 @@ impl TryFrom<u8> for Opecodes {
             0x0D => Ok(Opecodes::Jump),
             0x0E => Ok(Opecodes::SetFP),
             0x0F => Ok(Opecodes::SetRET),
-            0x10 => Ok(Opecodes::ExportFP),
+            0x10 => Ok(Opecodes::ResetFP),
             0x11 => Ok(Opecodes::PushRET),
             0x12 => Ok(Opecodes::IfNotJump),
-            0x13 => Ok(Opecodes::End),
+            0x13 => Ok(Opecodes::ExportFP),
+            0x14 => Ok(Opecodes::PushFP),
+            0x15 => Ok(Opecodes::End),
             _ => Err(()), // 無効な値はエラーを返す
         }
     }
@@ -308,7 +312,6 @@ impl AstNode {
                     }
 
                     let exp = options[0].compile(environment)?;
-                    let block1 = options[1].compile(environment)?;
 
                     res.extend(exp.0);
                     add_u8(&mut res, Opecodes::PushS64 as u8);
@@ -316,6 +319,7 @@ impl AstNode {
                     add_i64(&mut res, 0);
                     add_u8(&mut res, Opecodes::IfNotJump as u8);
 
+                    let block1 = options[1].compile(environment)?;
                     res.extend(block1.0);
 
                     add_u8(&mut res, Opecodes::PushS64 as u8);
@@ -461,11 +465,13 @@ impl AstNode {
                     return_type = "integer".to_string();
                 }
                 _ => unsafe {
+                    add_u8(&mut res, Opecodes::PushFP as u8);
+
                     add_u8(&mut res, Opecodes::PushS64 as u8);
                     let jump_pos = res.len(); // 戻る場所を指定
                     add_u64(&mut res, 0);
 
-                    for arg in args {
+                    for arg in args.iter().rev() {
                         let a = arg.compile(environment)?;
                         res.extend(a.0);
                     }
@@ -477,11 +483,13 @@ impl AstNode {
 
                     return_type = func_pos.1.clone();
 
+                    println!("curpos:{}", CURRENT_POS);
                     let return_pos_bytes: [u8; 8] = (CURRENT_POS as i64).to_le_bytes();
                     for i in 0..8 {
                         res[jump_pos + i] = return_pos_bytes[i];
                     }
 
+                    add_u8(&mut res, Opecodes::ResetFP as u8);
                     add_u8(&mut res, Opecodes::PushRET as u8); // 戻り値をスタックにプッシュ
                 },
             },
@@ -587,7 +595,7 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         let value1 = stack.pop64();
                         let value2 = stack.pop64();
                         stack.push64(
-                            (i64::from_le_bytes(value1) + i64::from_le_bytes(value2)).to_le_bytes(),
+                            (i64::from_le_bytes(value2) + i64::from_le_bytes(value1)).to_le_bytes(),
                         );
                         i += 1;
                     }
@@ -595,7 +603,7 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         let value1 = stack.pop64();
                         let value2 = stack.pop64();
                         stack.push64(
-                            (i64::from_le_bytes(value1) - i64::from_le_bytes(value2)).to_le_bytes(),
+                            (i64::from_le_bytes(value2) - i64::from_le_bytes(value1)).to_le_bytes(),
                         );
                         i += 1;
                     }
@@ -603,7 +611,7 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         let value1 = stack.pop64();
                         let value2 = stack.pop64();
                         stack.push64(
-                            (i64::from_le_bytes(value1) * i64::from_le_bytes(value2)).to_le_bytes(),
+                            (i64::from_le_bytes(value2) * i64::from_le_bytes(value1)).to_le_bytes(),
                         );
                         i += 1;
                     }
@@ -611,7 +619,7 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         let value1 = stack.pop64();
                         let value2 = stack.pop64();
                         stack.push64(
-                            (i64::from_le_bytes(value1) / i64::from_le_bytes(value2)).to_le_bytes(),
+                            (i64::from_le_bytes(value2) / i64::from_le_bytes(value1)).to_le_bytes(),
                         );
                         i += 1;
                     }
@@ -619,14 +627,14 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         let value1 = stack.pop64();
                         let value2 = stack.pop64();
                         stack.push64(
-                            (i64::from_le_bytes(value1) % i64::from_le_bytes(value2)).to_le_bytes(),
+                            (i64::from_le_bytes(value2) % i64::from_le_bytes(value1)).to_le_bytes(),
                         );
                         i += 1;
                     }
                     Opecodes::OutputI => {
                         let value = stack.pop64();
                         println!("{}", i64::from_le_bytes(value));
-                        res += &format!("{}", i64::from_le_bytes(value));
+                        res += &format!("{}\n", i64::from_le_bytes(value));
                         stack.push64(value);
                         i += 1;
                     }
@@ -637,7 +645,9 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         println!("{}", i);
                     }
                     Opecodes::SetFP => {
+                        println!("fp:{}->", fp);
                         fp = stack.sp as i64;
+                        println!("{}", fp);
                         i += 1;
                     }
                     Opecodes::SetRET => {
@@ -647,8 +657,10 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         }
                         i += 1;
                     }
-                    Opecodes::ExportFP => {
-                        stack.sp = fp as usize;
+                    Opecodes::ResetFP => {
+                        println!("fp:{}->", fp);
+                        fp = i64::from_le_bytes(stack.pop64());
+                        println!("{}", fp);
                         i += 1;
                     }
                     Opecodes::PushRET => {
@@ -664,6 +676,14 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         } else {
                             i += 1;
                         }
+                    }
+                    Opecodes::ExportFP => {
+                        stack.sp = fp as usize;
+                        i += 1;
+                    }
+                    Opecodes::PushFP => {
+                        stack.push64(fp.to_le_bytes());
+                        i += 1;
                     }
                     Opecodes::End => {
                         return Ok(res);
