@@ -43,6 +43,12 @@ pub enum Opecodes {
     IfNotJump,
     ExportFP,
     PushFP,
+    AddF,
+    SubF,
+    MulF,
+    DivF,
+    ModF,
+    OutputF,
     End,
 }
 
@@ -72,7 +78,13 @@ impl TryFrom<u8> for Opecodes {
             0x12 => Ok(Opecodes::IfNotJump),
             0x13 => Ok(Opecodes::ExportFP),
             0x14 => Ok(Opecodes::PushFP),
-            0x15 => Ok(Opecodes::End),
+            0x15 => Ok(Opecodes::AddF),
+            0x16 => Ok(Opecodes::SubF),
+            0x17 => Ok(Opecodes::MulF),
+            0x18 => Ok(Opecodes::DivF),
+            0x19 => Ok(Opecodes::ModF),
+            0x1A => Ok(Opecodes::OutputF),
+            0x1B => Ok(Opecodes::End),
             _ => Err(()), // 無効な値はエラーを返す
         }
     }
@@ -464,6 +476,57 @@ impl AstNode {
                     add_u8(&mut res, Opecodes::OutputI as u8);
                     return_type = "integer".to_string();
                 }
+                "addf" => {
+                    let (a, b) = get_binop_args(args, "float".to_string(), environment)?;
+                    res.extend(a.0);
+                    res.extend(b.0);
+                    add_u8(&mut res, Opecodes::AddF as u8);
+                    return_type = "float".to_string();
+                }
+                "subf" => {
+                    let (a, b) = get_binop_args(args, "float".to_string(), environment)?;
+                    res.extend(a.0);
+                    res.extend(b.0);
+                    add_u8(&mut res, Opecodes::SubF as u8);
+                    return_type = "float".to_string();
+                }
+                "mulf" => {
+                    let (a, b) = get_binop_args(args, "float".to_string(), environment)?;
+                    res.extend(a.0);
+                    res.extend(b.0);
+                    add_u8(&mut res, Opecodes::MulF as u8);
+                    return_type = "float".to_string();
+                }
+                "divf" => {
+                    let (a, b) = get_binop_args(args, "float".to_string(), environment)?;
+                    res.extend(a.0);
+                    res.extend(b.0);
+                    add_u8(&mut res, Opecodes::DivF as u8);
+                    return_type = "float".to_string();
+                }
+                "modf" => {
+                    let (a, b) = get_binop_args(args, "float".to_string(), environment)?;
+                    res.extend(a.0);
+                    res.extend(b.0);
+                    add_u8(&mut res, Opecodes::ModF as u8);
+                    return_type = "float".to_string();
+                }
+                "printf" => {
+                    if args.len() != 1 {
+                        return Err(format!(
+                            "this function takes 1 arguments but {} argument was supplied.",
+                            args.len()
+                        ));
+                    }
+                    let a = args[0].compile(environment)?;
+                    if !check_type(a.1.clone(), "float".to_string()) {
+                        return Err(format!("expected type float, but found type {}.", a.1));
+                    }
+
+                    res.extend(a.0);
+                    add_u8(&mut res, Opecodes::OutputF as u8);
+                    return_type = "float".to_string();
+                }
                 _ => unsafe {
                     add_u8(&mut res, Opecodes::PushFP as u8);
 
@@ -683,6 +746,53 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                     }
                     Opecodes::PushFP => {
                         stack.push64(fp.to_le_bytes());
+                        i += 1;
+                    }
+                    Opecodes::AddF => {
+                        let value1 = stack.pop64();
+                        let value2 = stack.pop64();
+                        stack.push64(
+                            (f64::from_le_bytes(value2) + f64::from_le_bytes(value1)).to_le_bytes(),
+                        );
+                        i += 1;
+                    }
+                    Opecodes::SubF => {
+                        let value1 = stack.pop64();
+                        let value2 = stack.pop64();
+                        stack.push64(
+                            (f64::from_le_bytes(value2) - f64::from_le_bytes(value1)).to_le_bytes(),
+                        );
+                        i += 1;
+                    }
+                    Opecodes::MulF => {
+                        let value1 = stack.pop64();
+                        let value2 = stack.pop64();
+                        stack.push64(
+                            (f64::from_le_bytes(value2) * f64::from_le_bytes(value1)).to_le_bytes(),
+                        );
+                        i += 1;
+                    }
+                    Opecodes::DivF => {
+                        let value1 = stack.pop64();
+                        let value2 = stack.pop64();
+                        stack.push64(
+                            (f64::from_le_bytes(value2) / f64::from_le_bytes(value1)).to_le_bytes(),
+                        );
+                        i += 1;
+                    }
+                    Opecodes::ModF => {
+                        let value1 = stack.pop64();
+                        let value2 = stack.pop64();
+                        stack.push64(
+                            (f64::from_le_bytes(value2) % f64::from_le_bytes(value1)).to_le_bytes(),
+                        );
+                        i += 1;
+                    }
+                    Opecodes::OutputF => {
+                        let value = stack.pop64();
+                        println!("{}", i64::from_le_bytes(value));
+                        res += &format!("{}\n", f64::from_le_bytes(value));
+                        stack.push64(value);
                         i += 1;
                     }
                     Opecodes::End => {

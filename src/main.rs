@@ -93,6 +93,30 @@ fn setup(
             text: String::from("if"),
             block_type: block::BlockType::Statement,
         },
+        block::BlockData {
+            text: String::from("addf"),
+            block_type: block::BlockType::Identifier,
+        },
+        block::BlockData {
+            text: String::from("subf"),
+            block_type: block::BlockType::Identifier,
+        },
+        block::BlockData {
+            text: String::from("mulf"),
+            block_type: block::BlockType::Identifier,
+        },
+        block::BlockData {
+            text: String::from("divf"),
+            block_type: block::BlockType::Identifier,
+        },
+        block::BlockData {
+            text: String::from("modf"),
+            block_type: block::BlockType::Identifier,
+        },
+        block::BlockData {
+            text: String::from("printf"),
+            block_type: block::BlockType::Identifier,
+        },
     ];
 
     let id = spawn_block(
