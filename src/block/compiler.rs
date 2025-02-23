@@ -123,8 +123,18 @@ fn check_type(t1: String, t2: String) -> bool {
 }
 
 impl AstNode {
-    pub fn compile(&self, environment: &mut Environment) -> Result<(Vec<u8>, String), String> {
+    pub fn compile(
+        &self,
+        environment: &mut Environment,
+        currentpos_reset: bool,
+    ) -> Result<(Vec<u8>, String), String> {
         static mut CURRENT_POS: u32 = 0;
+
+        if currentpos_reset {
+            unsafe {
+                CURRENT_POS = 0;
+            }
+        }
 
         let mut res: Vec<u8> = vec![];
         let mut return_type: String = "".to_string();
@@ -182,14 +192,14 @@ impl AstNode {
                     args.len()
                 ))
             } else {
-                let a = args[0].compile(environment)?;
+                let a = args[0].compile(environment, false)?;
                 if !check_type(a.1.clone(), expected_type.clone()) {
                     Err(format!(
                         "expected type {}, but found type {}.",
                         expected_type, a.1
                     ))
                 } else {
-                    let b = args[1].compile(environment)?;
+                    let b = args[1].compile(environment, false)?;
                     if !check_type(b.1.clone(), expected_type.clone()) {
                         Err(format!(
                             "expected type {}, but found type {}.",
@@ -235,7 +245,7 @@ impl AstNode {
                     match &options[0] {
                         AstNode::Identifier(idf) => {
                             let var = environment.find(idf.clone())?;
-                            let exp = &options[1].compile(environment)?;
+                            let exp = &options[1].compile(environment, false)?;
                             return_type = exp.1.clone();
                             res.extend(exp.0.clone());
                             if var.1 != "".to_string() && var.1 != exp.1 {
@@ -292,7 +302,8 @@ impl AstNode {
 
                         add_u8(&mut res, Opecodes::SetFP as u8); // FP設定
 
-                        let (bytes, ret_type) = options[compile_point].compile(environment)?;
+                        let (bytes, ret_type) =
+                            options[compile_point].compile(environment, false)?;
                         res.extend(bytes);
                         return_type = ret_type;
 
@@ -323,7 +334,7 @@ impl AstNode {
                         return Err("statement 'if' needs three options.".to_string());
                     }
 
-                    let exp = options[0].compile(environment)?;
+                    let exp = options[0].compile(environment, false)?;
 
                     res.extend(exp.0);
                     add_u8(&mut res, Opecodes::PushS64 as u8);
@@ -331,7 +342,7 @@ impl AstNode {
                     add_i64(&mut res, 0);
                     add_u8(&mut res, Opecodes::IfNotJump as u8);
 
-                    let block1 = options[1].compile(environment)?;
+                    let block1 = options[1].compile(environment, false)?;
                     res.extend(block1.0);
 
                     add_u8(&mut res, Opecodes::PushS64 as u8);
@@ -345,7 +356,7 @@ impl AstNode {
                             res[jump_pos_to_else + i] = bytes[i];
                         }
 
-                        let block2 = options[2].compile(environment)?;
+                        let block2 = options[2].compile(environment, false)?;
                         res.extend(block2.0);
 
                         let bytes = (CURRENT_POS as i64).to_le_bytes();
@@ -402,7 +413,7 @@ impl AstNode {
                     }
 
                     for code in codes[start_compile_point..].iter() {
-                        let (bytes, ret_type) = code.compile(environment)?;
+                        let (bytes, ret_type) = code.compile(environment, false)?;
                         res.extend(bytes);
                         return_type = ret_type;
                     }
@@ -467,7 +478,7 @@ impl AstNode {
                             args.len()
                         ));
                     }
-                    let a = args[0].compile(environment)?;
+                    let a = args[0].compile(environment, false)?;
                     if !check_type(a.1.clone(), "integer".to_string()) {
                         return Err(format!("expected type integer, but found type {}.", a.1));
                     }
@@ -518,7 +529,7 @@ impl AstNode {
                             args.len()
                         ));
                     }
-                    let a = args[0].compile(environment)?;
+                    let a = args[0].compile(environment, false)?;
                     if !check_type(a.1.clone(), "float".to_string()) {
                         return Err(format!("expected type float, but found type {}.", a.1));
                     }
@@ -535,7 +546,7 @@ impl AstNode {
                     add_u64(&mut res, 0);
 
                     for arg in args.iter().rev() {
-                        let a = arg.compile(environment)?;
+                        let a = arg.compile(environment, false)?;
                         res.extend(a.0);
                     }
 
@@ -622,7 +633,7 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
     let mut ret: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
     let mut res = "".to_string();
     loop {
-        print!("{}=>", i);
+        //print!("{}=>", i);
         if let Some(&byte) = code.get(i as usize) {
             if let Some(opcode) = (byte as u8).try_into().ok() {
                 match opcode {
@@ -705,12 +716,9 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         let pos = stack.pop64();
                         let pos4 = [pos[0], pos[1], pos[2], pos[3]];
                         i = u32::from_le_bytes(pos4);
-                        println!("{}", i);
                     }
                     Opecodes::SetFP => {
-                        println!("fp:{}->", fp);
                         fp = stack.sp as i64;
-                        println!("{}", fp);
                         i += 1;
                     }
                     Opecodes::SetRET => {
@@ -721,9 +729,7 @@ pub fn execute_vm(code: Vec<u8>) -> Result<String, String> {
                         i += 1;
                     }
                     Opecodes::ResetFP => {
-                        println!("fp:{}->", fp);
                         fp = i64::from_le_bytes(stack.pop64());
-                        println!("{}", fp);
                         i += 1;
                     }
                     Opecodes::PushRET => {

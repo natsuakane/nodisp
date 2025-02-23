@@ -265,7 +265,7 @@ fn run_button_click(
                 environment.stack.clear();
                 let start_point_block = block_list.item[&start_block.start_block].1.clone();
                 let result = match start_point_block.parse(block_list.as_ref()) {
-                    Ok(code) => match code.compile(environment.as_mut()) {
+                    Ok(code) => match code.compile(environment.as_mut(), true) {
                         Ok((mut bytes, ret_type)) => {
                             bytes.push(block::compiler::Opecodes::End as u8);
                             for i in 0..bytes.len() {
