@@ -327,7 +327,12 @@ fn add_value(
     value_inputs: Query<Entity, With<ValueInput>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
+    menu_query: Query<Entity, With<Menu>>,
 ) {
+    if !menu_query.is_empty() {
+        return;
+    }
+
     for event in events.read() {
         if !value_inputs.contains(event.entity) {
             break;
